@@ -1,0 +1,95 @@
+* ECC
+https://zhuanlan.zhihu.com/p/42629724
+
+** 域
+整数模 p 的剩余类 {0, 1, ... p-1} 是一个域, 记为 F_{p}, 以下所有取值均在域内
+
+** 负元
+a - b = a + (-b) = 0
+例: a = 20, p = 23, 那么 a 的负元就是 3
+
+** 逆元
+a * a^{-1} \equiv 1 (mod p)
+例: a = 20, p = 23, 那么 a^{-1} = 15
+分数取模 $\frac{1}{a}$ = a^{-1}
+
+DONE: 利用扩展欧几里得算法 (其实就是辗转相除法), 计算乘法逆元 (现在计算时间几乎可以忽略)
+
+** 求模一般用素数
+求模为什么基本都是素数, 因为多数情况需要存在逆元, 逆元存在的充分条件是 a, p 互素, 那索性就取 p 为素数好了
+
+** ECC 的加法和数乘
+E_{p}(a, b): y^{2} \equiv x^{3} + a * x + b (mod p)
+比特币用的是: a = 0, b = 7?
+
+例2 和例3 都手动算一算, 判断结果是否在 E_{23}(1, 1) 上
+
+加法只有 P1 != P2 时才能进行
+P3(x3, y3) = P1(x1, y1) + P2(x2, y2)
+(if P1 != P2) \lambda = \frac{y2 - y1}{x2 - x1} # 斜率?
+(else) \lambda = \frac{3 * x2 + a}{2y1}         # 分子函数求导?
+
+x3 = \lambda^{2} - x1 - x2
+y3 = \lambda(x1 - x3) - y1
+
+减法: 等于加上 P(x, -y), 推导 (先验: P3 != P1, 只有无穷远点是零元):
+P3(x3, y3) + P4(x1, -y1), \lambda2 = \frac{y3 + y1}{x3 - x1} = -\lambda (根据上面的 y3 = 式), x5 = \lambda2^{2} - x1 - x3 = x2 (根据上面 x3 = 式), y5 = \lambda2 * (x1 - x5) - (-y1) = -\lambda * (x1 - x2) + y1 = (y2 - y1) + y1 = y2
+也就是说 P3(x3, y3) + P4(x1, -y1) = P2(x2, y2), 证毕
+
+** 加密 (ElGamal)
+*** 一般形式
+有 y \equiv g^{x} (mod p), 其中 (y, g, p) 为公钥, x 为密钥
+对于要发送的消息 M (其二进制表示就是整数), 随机生成一个零时私钥 k, 我们可以通过发送 C1 = g^{k} 和 C2 = y^{k} * M, 那么拥有私钥的一方就可以通过 C2 / (C1^{x}) = y^{k} * M / g^{k*x} = M 来解密
+
+*** 椭圆曲线 (类比一般形式)
+私钥 k, 公钥 G = (xg, yg), P = k * G = (xp, yp)
+消息 M, 随机私钥 r, 发送 C1 = r * G, C2 = r * P + M,
+那么 k * C1 - C2 = k * r * G - r * k * G + M = M
+
+** 数字签名 (ECDSA) (椭圆曲线数字签名算法)
+类似 ElGamal, 设原私钥 k, 原公钥 P(xp, yp) = k * G,
+NOTE: n 称为 G 的阶, 满足 n * G = O, 其中 O 为单位元, 例 E_{23}(1, 1) 上 (3, 10) 的阶为 28
+1. 随机生成新私钥 r, R(xr, yr) = r * G (新公钥) 使得 xr != 0 (mod n)
+2. s = r^{-1} * (hash(m) + xr * k), 满足 s != 0 (mod n), (否则重新从头来过)
+
+验证: hash(m) * s^{-1} * G + xr * s^{-1} * P 就是 R(xr, yr)
+
+用相同的 r 是不安全的, 详见:
+https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm
+
+
+网上有另一种方法, 看起来更简单
+1. 同上
+2. s = r - hash(m) * k (mod p)
+
+验证: s * G + hash(m) * P 就是 R (判断只用 x 坐标)
+因为 s * G = r * G - hash(m) * k * G = R - hash(m) * P
+
+TODO: 我无法推导两者的等价关系, 也无法指出后一种是否存在不妥
+
+** 注意
++ 第一种方法要求 n 是素数, 所以 (23, 1, 1) 的例子并不合适, 并且其中的 r^{-1}, s^{-1} 都是 (mod n) 的逆元
++ 第二种方法没有这种要求
+
+有限域上的椭圆曲线图, 对称轴并不是 x 轴, 而是 p / 2 (y = 0 时, 理论上不是对称的)
+
+https://blog.csdn.net/zhuiyunzhugang/article/details/107589223
+#+BEGIN_SRC rust
+let ec = ECC::new(23, 1, 1);
+assert_eq!(Point::new(4, 0), ec.mul_k_p_logn(14, &Point::new(3, 10)));
+#+END_SRC
+
+* RSA
+任取两个大素数 p, q
+n = p * q (公钥1)
+\phi(n) = (p - 1) * (q - 1) # 欧拉
+任选大整数 e (公钥2), 满足 gcd(e, \phi(n)) = 1,
+
+任选密钥 d, 满足 d * e \equiv 1 (mod \phi(n)) (即求逆元)
+将消息 m 加密 c = m^{e} (mod n)
+解密: m = c^{d} (mod n) (证明略)
+
+欧拉定理: 正整数 n 和 a 互素, 那么 a^{\phi(n)} \equiv 1 (mod n)
+\phi(n) 称为欧拉函数, 是小于 n 的正整数中和 n 互素的个数
+标准因式分解 n = p1^{x1}*...*pn^{xn}
+\phi(n) = n * (1 - 1/x1)*...*(1 - 1/xn)
