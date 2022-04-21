@@ -59,7 +59,7 @@ impl ECC {
         } else if p2.is_unit() {
             p1.copy()
         } else {
-            match self.cal_lambda(p1, p2) {
+            match self.calc_lambda(p1, p2) {
                 None => Point::new(0, 0),
                 Some(lam) => {
                     let x3 = self.modulo(lam * lam - p1.x - p2.x);
@@ -115,10 +115,10 @@ impl ECC {
     }
 
     fn get_negative_point(&self, p1: &Point) -> Point {
-        Point::new(p1.x, self.cal_negative(p1.y))
+        Point::new(p1.x, self.calc_negative(p1.y))
     }
 
-    fn cal_lambda(&self, p1: &Point, p2: &Point) -> Option<T> {
+    fn calc_lambda(&self, p1: &Point, p2: &Point) -> Option<T> {
         // NOTE: p1 != -p2
         let (num, den) = if p1 != p2 {
             if p1.x == p2.x {
@@ -133,10 +133,10 @@ impl ECC {
             }
             (3 * p1.x * p1.x + self.a, 2 * p1.y)
         };
-        Some(self.modulo(self.modulo(num) * self.cal_inverse_gcd_tail(self.modulo(den))))
+        Some(self.modulo(self.modulo(num) * self.calc_inverse_gcd_tail(self.modulo(den))))
     }
 
-    fn cal_inverse(&self, x: T) -> T {
+    fn calc_inverse(&self, x: T) -> T {
         if x != 0 {
             let mut y = x;
             for i in 1..self.p {
@@ -149,7 +149,7 @@ impl ECC {
         panic!("No inverse!");
     }
 
-    fn cal_inverse_gcd(&self, x: T) -> T {
+    fn calc_inverse_gcd(&self, x: T) -> T {
         fn rec(y: T, x: T, k: T) -> (T, T) {
             if x == 1 {
                 (0, 1) //(1, -k)
@@ -162,7 +162,7 @@ impl ECC {
         self.modulo(rec(x, self.p, 1).0)
     }
 
-    fn cal_inverse_gcd_tail(&self, x: T) -> T {
+    fn calc_inverse_gcd_tail(&self, x: T) -> T {
         fn rec(y: T, x: T, a: T, b: T) -> T {
             // one pre = how many x, one cur = how many x (tail recursive)
             if x == 1 {
@@ -175,7 +175,7 @@ impl ECC {
         self.modulo(rec(x, self.p, 1, 0))
     }
 
-    fn cal_negative(&self, x: T) -> T {
+    fn calc_negative(&self, x: T) -> T {
         self.modulo(-x)
     }
 
@@ -204,8 +204,8 @@ fn test_ecc() {
 
     assert_eq!(1, ec.modulo(47));
     assert_eq!(22, ec.modulo(-47));
-    assert_eq!(1, ec.cal_negative(-47));
-    assert_eq!(15, ec.cal_inverse(20));
+    assert_eq!(1, ec.calc_negative(-47));
+    assert_eq!(15, ec.calc_inverse(20));
 
     assert_eq!(
         Point::new(17, 20),
@@ -320,10 +320,10 @@ fn test_ecdsa() {
     let pr = ec.mul_k_p_logn(r, &g);
 
     let ec2 = ECC::new(ec.find_order(&p), 1, 1);
-    let s = ec2.modulo(ec2.cal_inverse_gcd_tail(r) * (m + pr.x * k));
+    let s = ec2.modulo(ec2.calc_inverse_gcd_tail(r) * (m + pr.x * k));
 
     //dbg!(&s); // need pr.x != 0, s != 0
-    let s_1 = ec2.cal_inverse_gcd_tail(s);
+    let s_1 = ec2.calc_inverse_gcd_tail(s);
     let v = ec.add_p1_p2(
         &ec.mul_k_p_logn(m * s_1, &g),
         &ec.mul_k_p_logn(pr.x * s_1, &p),
@@ -356,10 +356,10 @@ fn find_a_good_ec() {
 #[test]
 fn test_inverse_fast() {
     let ec = ECC::new(102, 1, 1);
-    assert_eq!(53, ec.cal_inverse_gcd(77));
-    assert_eq!(53, ec.cal_inverse_gcd_tail(77));
+    assert_eq!(53, ec.calc_inverse_gcd(77));
+    assert_eq!(53, ec.calc_inverse_gcd_tail(77));
 
-    assert_eq!(ec.cal_inverse_gcd(7), ec.cal_inverse_gcd_tail(7));
+    assert_eq!(ec.calc_inverse_gcd(7), ec.calc_inverse_gcd_tail(7));
 }
 
 #[test]
