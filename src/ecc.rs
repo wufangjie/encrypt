@@ -77,7 +77,7 @@ impl ECC {
     pub fn mul_k_p_1by1(&self, k: T, p1: &Point) -> Point {
         let mut p2 = (*p1).clone();
         for _ in 1..k {
-            p2 = self.add_p1_p2(&p1, &p2);
+            p2 = self.add_p1_p2(p1, &p2);
         }
         p2
     }
@@ -88,9 +88,9 @@ impl ECC {
         } else if k == 1 {
             (*p1).clone()
         } else if k & 1 == 1 {
-            self.add_p1_p2(&p1, &self.mul_k_p_logn(k - 1, &p1))
+            self.add_p1_p2(p1, &self.mul_k_p_logn(k - 1, p1))
         } else {
-            let p2 = self.mul_k_p_logn(k >> 1, &p1);
+            let p2 = self.mul_k_p_logn(k >> 1, p1);
             self.add_p1_p2(&p2, &p2)
         }
     }
@@ -150,16 +150,16 @@ impl ECC {
     }
 
     fn calc_inverse_gcd(&self, x: T) -> T {
-        fn rec(y: T, x: T, k: T) -> (T, T) {
+        fn rec(y: T, x: T) -> (T, T) {
             if x == 1 {
                 (0, 1) //(1, -k)
             } else {
                 let k = y / x;
-                let (a, b) = rec(x, y - k * x, k);
+                let (a, b) = rec(x, y - k * x);
                 (b, a - k * b)
             }
         }
-        self.modulo(rec(x, self.p, 1).0)
+        self.modulo(rec(x, self.p).0)
     }
 
     fn calc_inverse_gcd_tail(&self, x: T) -> T {

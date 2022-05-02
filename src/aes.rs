@@ -1,6 +1,6 @@
 //! 只实现 128 bit 密钥的情况
 
-use crate::aes_const::{MIX_MAT, MIX_MAT_INV, RND_CON, RND_NUM, SUB_BOX, SUB_BOX_INV};
+use crate::aes_const::{MIX_MAT, MIX_MAT_INV, RND_CON, SUB_BOX, SUB_BOX_INV};
 use std::fmt;
 use std::ops::{Deref, DerefMut};
 
@@ -58,14 +58,14 @@ impl BitSquare {
         Self { data: [[0; N]; N] }
     }
 
-    fn from_row(row: &[u8]) -> Self {
-        // TODO: 处理长度不够的情况
-        let mut data = [[0; N]; N];
-        for (i, v) in row.iter().take(N * N).enumerate() {
-            data[i / N][i % N] = *v;
-        }
-        Self { data }
-    }
+    // fn from_row(row: &[u8]) -> Self {
+    //     // TODO: 处理长度不够的情况
+    //     let mut data = [[0; N]; N];
+    //     for (i, v) in row.iter().take(N * N).enumerate() {
+    //         data[i / N][i % N] = *v;
+    //     }
+    //     Self { data }
+    // }
 
     fn from_col(col: &[u8]) -> Self {
         let mut data = [[0; N]; N];
@@ -79,7 +79,7 @@ impl BitSquare {
         Self { data: mat }
     }
 
-    fn to_bytes(&self) -> Vec<u8> {
+    fn to_bytes(self) -> Vec<u8> {
         let mut res = Vec::with_capacity(N * N);
         for j in 0..N {
             for i in 0..N {

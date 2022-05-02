@@ -1,3 +1,7 @@
-mod aes;
 mod aes_const;
-mod ecc;
+
+pub mod aes;
+pub use aes::AES;
+
+pub mod ecc;
+pub use ecc::ECC;
