@@ -197,72 +197,76 @@ n 为大于 1 的整数, a, n 互素, 使得 a^{n} \equiv 1 (mod n) 成立的最
 
 ** 扩展域 GF(p^{m})
 *** 用多项式来表述
-a = \Sum a_{i} * p^{i}, 其中 a_{i} \in F_{p}, i = 0, 1, ..., m-1
+a = \sum a_{i} * p^{i}, 其中 a_{i} \in F_{p}, i = 0, 1, ..., m-1
 
-每个 a_{i} 都有 p 个取值, 所以总的有 p^{m} 个成员
+其中每个 a_{i} 都有 p 个取值, 所以总共有 p^{m} 个成员 (阶为 p^{m})
 
 *** 定义加法
 多项式加法 (对应项的系数相加) 后求模
 
-注: 显然是满足域要求加法的所有条件
+注: 显然是满足域对加法的所有要求
 
 *** 定义乘法
 多项式乘法 (两两相乘, 同次项相加, 求模)
 
-+ 注1: 这样会导致次数高于定义, 需要约定不可约多项式求余式 (类比求模的除法)
++ 注1: 这样会导致次数大于 m - 1 (即不在域内), 需要约定不可约多项式求余式 (类比求模的除法)
 + 注2: 特别地, 当 p 等于 2 时, 该域就是有限位数的二进制
-+ 注3: 显然满足域要求的条件 (除了逆元的存在性)
++ 注3: 显然满足域对乘法的所有要求 (逆元的存在性证明见下一节)
 
 *** 乘法逆元存在性的证明 (模仿 F_{p})
-任意确定的 a \in GF(p^{m}), 任意 b_{i} \in GF(p^{m}), a * b_{i} (mod c) 是 b_{i} 的一个重排列, c 是最高次项为 m 的不可约多项式 (prime polynomial)
+任意确定的 a \in GF(p^{m}), c 是最高次项为 m 的不可约多项式 (prime polynomial), 那么可以证明: 任意 b_{i} \in GF(p^{m}), a * b_{i} (mod c) 是 b_{i} 的一个重排列
 
 用反证法, 若不是重排列, 则必存在 i, j, 使得 a * (b_{i} - b_{j}) \equiv 0 (mod c), 和 c 的定义矛盾
 
-注: 不可约多项式可以有很多, 比如对于 GF(2^{8}), 可以是 0b100011011 或 0b100011101, 这些不可约多项式的选择更多是生成元的不同 (详见下一节)
+所以存在 b_{i} 使得 a * b_{i} \equiv 1 (mod c)
+
+注: 不可约多项式可以有多个, 比如对于 GF(2^{8}), 可以是 0b100011011 或 0b100011101, 这些不可约多项式的选择更多是生成元的不同 (详见下一节)
 
 *** 加速
-多项式的乘除是比较慢的, 但好在是有限域, 我们可以通过查表来用空间换时间, 那么乘除法各需要 N * N 的空间, 有么有可能把空间复杂度降到 N?
+多项式的乘除是比较慢的, 但好在是有限域, 我们可以通过查表来用空间换时间, 那么乘除法各需要 O(N^{2}) 的空间, 有没有可能把空间复杂度降到 O(N)?
 
-假设我们有一个生成元 g, 有限域内的非零元都可以用 g^{n} 来表示, 那么我们就可以把复杂的乘除转化成简单的加减:
+假设我们有一个生成元 g, 有限域内的任意非零元 a 都可以用 g^{n} 来表示, 也就是说有 n = log_{g}(a) (不会引起混淆, 所以可以把 log_{g} 简写成 log)
 
-a * b = g^{n_{a}} * g^{n_{b}} = g^{n_{a} + n_{b}} 其中: n_{a} = log_{g}(a)
+那么我们就可以把复杂的乘除转化成简单的加减法: a * b = g^{log(a)} * g^{log(b)} = g^{log(a) + log(b)}
 
-如果我们对任意元素, 都算好了对数和指数表 (空间复杂度为 N), 那么乘除我们就可以化简为查对数表, 然后加减, 然后查指数表!
+如果我们对任意元素 (空间复杂度为 N), 都算好了对数和指数表, 那么乘除我们就可以化简为查对数表, 然后加减, 然后查指数表!
 
+验证是否为生成元, 建表的代码实现如下:
 #+begin_src python
-def galois_mul(lhs, rhs, p):
-    res = 0
-    while lhs != 0:
-        if lhs & 1:
-            res ^= rhs
-        lhs >>= 1
-        if rhs & 0x80:
-            rhs <<= 1
-            rhs ^= p
-        else:
-            rhs <<= 1
-            rhs &= 0xff
-    return res
+  def galois_mul(lhs, rhs, p):
+      res = 0
+      while lhs != 0:
+	  if lhs & 1:
+	      res ^= rhs
+	  lhs >>= 1
+	  if rhs & 0x80:
+	      rhs <<= 1
+	      rhs ^= p
+	  else:
+	      rhs <<= 1
+	      rhs &= 0xff
+      return res
 
 
-def print_hex_table(table):
-    for i in range(16):
-        print(" ".join(["{:02x}".format(v) for v in table[i * 16 : (i + 1) * 16]]))
+  def print_hex_table(table):
+      for i in range(16):
+	  print(" ".join(["{:02x}".format(v)
+			  for v in table[i * 16 : (i + 1) * 16]]))
 
 
-n = 256
-exp_table = [0] * n
-log_table = [0] * n
-v = 1 # 0 次
-for i in range(n):
-    exp_table[i] = v
-    log_table[v] = i
-    v = galois_mul(v, 2, 0b100011101)
-    # v = galois_mul(v, 3, 0b100011011)
+  n = 256
+  exp_table = [0] * n
+  log_table = [0] * n
+  v = 1 # 0 次
+  for i in range(n):
+      exp_table[i] = v
+      log_table[v] = i
+      v = galois_mul(v, 2, 0b100011101)
+      # v = galois_mul(v, 3, 0b100011011)
 
-print(len(set(exp_table)))
-print_hex_table(exp_table)
-print_hex_table(log_table)
+  print(len(set(exp_table)))
+  print_hex_table(exp_table)
+  print_hex_table(log_table)
 #+end_src
 
 *** 应用
