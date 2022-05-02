@@ -129,7 +129,7 @@ impl ECC {
         } else {
             if p1.y == 0 {
                 return None; // NOTE: unreachable
-                //panic!("{} == -{}", p1, p1);
+                             //panic!("{} == -{}", p1, p1);
             }
             (3 * p1.x * p1.x + self.a, 2 * p1.y)
         };
