@@ -233,7 +233,6 @@ a = \sum a_{i} * p^{i}, 其中 a_{i} \in F_{p}, i = 0, 1, ..., m-1
 
 验证是否为生成元, 建表的代码实现如下:
 #+begin_src python
-
 def galois_mul(lhs, rhs, p):
     res = 0
     while lhs != 0:
@@ -247,7 +246,6 @@ def galois_mul(lhs, rhs, p):
             rhs <<= 1
             rhs &= 0xff
     return res
-
 
 
 def print_hex_table(table):

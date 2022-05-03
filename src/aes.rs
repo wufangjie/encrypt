@@ -1,6 +1,6 @@
 //! 只实现 128 bit 密钥的情况
 
-use crate::aes_const::{MIX_MAT, MIX_MAT_INV, RND_CON, SUB_BOX, SUB_BOX_INV};
+use crate::aes_const::{EXP_TABLE, LOG_TABLE, MIX_MAT, MIX_MAT_INV, RND_CON, SUB_BOX, SUB_BOX_INV};
 use std::fmt;
 use std::ops::{Deref, DerefMut};
 
@@ -139,7 +139,8 @@ impl BitSquare {
             for j in 0..N {
                 let mut res = 0u8;
                 for k in 0..N {
-                    res ^= galois_mul(MIX_MAT[i][k], self[k][j]);
+                    //res ^= galois_mul(MIX_MAT[i][k], self[k][j]);
+                    res ^= log_sum_exp(MIX_MAT[i][k], self[k][j]);
                 }
                 new[i][j] = res;
             }
@@ -154,7 +155,8 @@ impl BitSquare {
             for j in 0..N {
                 let mut res = 0u8;
                 for k in 0..N {
-                    res ^= galois_mul(MIX_MAT_INV[i][k], self[k][j]);
+                    //res ^= galois_mul(MIX_MAT_INV[i][k], self[k][j]);
+                    res ^= log_sum_exp(MIX_MAT_INV[i][k], self[k][j]);
                 }
                 new[i][j] = res;
             }
@@ -163,6 +165,7 @@ impl BitSquare {
     }
 }
 
+/// polynomial version of GF(2^8) multiplication
 fn galois_mul(mut lhs: u8, mut rhs: u8) -> u8 {
     let mut res = 0u8;
     while lhs != 0 {
@@ -180,6 +183,16 @@ fn galois_mul(mut lhs: u8, mut rhs: u8) -> u8 {
         }
     }
     res
+}
+
+/// table lookup version of GF(2^8) multiplication
+fn log_sum_exp(lhs: u8, rhs: u8) -> u8 {
+    if lhs == 0 || rhs == 0 {
+        0
+    } else {
+        let log_sum = LOG_TABLE[lhs as usize] as usize + LOG_TABLE[rhs as usize] as usize;
+        EXP_TABLE[log_sum % 0xff] // 0xff loop
+    }
 }
 
 #[derive(Debug)]
@@ -273,26 +286,26 @@ impl AES {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::aes_const::{S_TABLE, S_TABLE_INV};
+    // use crate::aes_const::{S_TABLE, S_TABLE_INV};
 
-    impl BitSquare {
-        fn sub2(&mut self) {
-            for i in 0..N {
-                for j in 0..N {
-                    self[i][j] = S_TABLE[(self[i][j] >> N) as usize][(self[i][j] & 0xf) as usize];
-                }
-            }
-        }
+    // impl BitSquare {
+    //     fn sub2(&mut self) {
+    //         for i in 0..N {
+    //             for j in 0..N {
+    //                 self[i][j] = S_TABLE[(self[i][j] >> N) as usize][(self[i][j] & 0xf) as usize];
+    //             }
+    //         }
+    //     }
 
-        fn sub_inv2(&mut self) {
-            for i in 0..N {
-                for j in 0..N {
-                    self[i][j] =
-                        S_TABLE_INV[(self[i][j] >> N) as usize][(self[i][j] & 0x0F) as usize];
-                }
-            }
-        }
-    }
+    //     fn sub_inv2(&mut self) {
+    //         for i in 0..N {
+    //             for j in 0..N {
+    //                 self[i][j] =
+    //                     S_TABLE_INV[(self[i][j] >> N) as usize][(self[i][j] & 0x0F) as usize];
+    //             }
+    //         }
+    //     }
+    // }
 
     #[test]
     fn test2() {
@@ -334,8 +347,19 @@ mod test {
     }
 
     #[test]
+    fn test4() {
+        let a = 123;
+        let b = 111;
+        let c = 23;
+        assert_eq!(galois_mul(a, b), log_sum_exp(a, b));
+        assert_eq!(galois_mul(a, c), log_sum_exp(c, a));
+        assert_eq!(galois_mul(b, 0), log_sum_exp(0, b));
+    }
+
+    #[test]
+    #[ignore]
     fn test() {
-        let mut b = BitSquare::from_mat([
+        let b = BitSquare::from_mat([
             [101, 187, 113, 232],
             [31, 249, 224, 13],
             [84, 77, 68, 73],
@@ -349,14 +373,14 @@ mod test {
         // b.shift_row_inv();
         // dbg!(&b);
 
-        let mut c = b; //.clone();
-        b.sub();
-        c.sub2();
-        assert_eq!(b, c);
+        // let mut c = b; //.clone();
+        // b.sub();
+        // c.sub2();
+        // assert_eq!(b, c);
 
-        b.sub_inv();
-        c.sub_inv2();
-        assert_eq!(b, c);
+        // b.sub_inv();
+        // c.sub_inv2();
+        // assert_eq!(b, c);
 
         let e = BitSquare::from_mat([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]);
         let mut m = BitSquare::from_mat(MIX_MAT);
