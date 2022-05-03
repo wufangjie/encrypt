@@ -8,7 +8,7 @@ const N: usize = 4;
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct BitSquare {
-    data: [[u8; N]; N],
+    pub(crate) data: [[u8; N]; N],
 }
 
 impl fmt::Display for BitSquare {
@@ -198,14 +198,12 @@ fn log_sum_exp(lhs: u8, rhs: u8) -> u8 {
 #[derive(Debug)]
 pub struct AES {
     round: usize,
-    keys: Vec<BitSquare>,
+    pub(crate) keys: Vec<BitSquare>,
 }
 
 impl AES {
-    pub fn new(key: BitSquare, round: usize) -> Self {
-        //fn gen(&self) -> Vec<BitSquare> {
-        // NOTE: 这个密钥的生成, 没有所谓的逆过程, 就是提前算好, 然后逆序解密
-
+    pub fn new2(key: BitSquare) -> Self {
+        let round = 10;
         let mut keys = Vec::<BitSquare>::with_capacity(11);
         keys.push(key);
 
@@ -215,7 +213,7 @@ impl AES {
             for i in 0..N {
                 new[i][0] = SUB_BOX[keys[r][(i + 1) % N][N - 1] as usize] ^ keys[r][i][0];
             }
-            new[0][0] ^= RND_CON[r + 1];
+            new[0][0] ^= RND_CON[r]; //  + 1
 
             for j in 1..N {
                 for i in 0..N {
@@ -225,6 +223,64 @@ impl AES {
             keys.push(new);
         }
 
+        dbg!(&keys[1]);
+        Self { round, keys }
+    }
+
+    /// row style key
+    pub fn new(key: &[[u8; N]]) -> Self {
+        //fn gen(&self) -> Vec<BitSquare> {
+        // NOTE: 这个密钥的生成, 没有所谓的逆过程, 就是提前算好, 然后逆序解密
+        let key_len = key.len();
+
+        let round = match key_len {
+            4 => 10,
+            6 => 12,
+            8 => 14,
+            _ => panic!("AES only support 128/192/256 bits key!"),
+        };
+
+        let mut key_manager = vec![];
+        for row in key {
+            key_manager.push(*row);
+        }
+
+        let mut i = key_len;
+        let mut r = 0;
+        let nrow = N * (round + 1);
+
+        while i < nrow {
+            let mut new = key_manager[i - 1].clone();
+            if i % N == 0 {
+                for j in 0..N {
+                    new[j] = SUB_BOX[new[j] as usize];
+                }
+            }
+
+            if i % key_len == 0 {
+                new.rotate_left(1);
+                new[0] ^= RND_CON[r];
+                r += 1;
+            }
+
+            for j in 0..N {
+                new[j] = new[j] ^ key_manager[i - key_len][j];
+            }
+            i += 1;
+            key_manager.push(new);
+        }
+
+        let mut keys = Vec::<BitSquare>::with_capacity(1 + round);
+        for r in 0..=round {
+            let mut key = [[0; N]; N];
+            for j in 0..N {
+                for i in 0..N {
+                    key[i][j] = key_manager[r * N + j][i];
+                }
+            }
+            keys.push(BitSquare::from_mat(key));
+        }
+        //dbg!(&keys[1]);
         Self { round, keys }
     }
 
@@ -286,102 +342,9 @@ impl AES {
 #[cfg(test)]
 mod test {
     use super::*;
-    // use crate::aes_const::{S_TABLE, S_TABLE_INV};
-
-    // impl BitSquare {
-    //     fn sub2(&mut self) {
-    //         for i in 0..N {
-    //             for j in 0..N {
-    //                 self[i][j] = S_TABLE[(self[i][j] >> N) as usize][(self[i][j] & 0xf) as usize];
-    //             }
-    //         }
-    //     }
-
-    //     fn sub_inv2(&mut self) {
-    //         for i in 0..N {
-    //             for j in 0..N {
-    //                 self[i][j] =
-    //                     S_TABLE_INV[(self[i][j] >> N) as usize][(self[i][j] & 0x0F) as usize];
-    //             }
-    //         }
-    //     }
-    // }
 
     #[test]
-    fn test2() {
-        // let b = BitSquare::from_col(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
-        // dbg!(b.gen());
-        let a = AES::new(
-            BitSquare::from_col(&(1..17).into_iter().collect::<Vec<u8>>()),
-            10,
-        );
-        dbg!(&a);
-
-        let mut m =
-            BitSquare::from_col(&[81, 72, 33, 84, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
-
-        a.encode_block(&mut m);
-        dbg!(&m);
-        dbg!(a.decode_block(&mut m));
-        dbg!(&m);
-    }
-
-    #[test]
-    fn test3() {
-        let a = AES::new(
-            BitSquare::from_col(&(1..17).into_iter().collect::<Vec<u8>>()),
-            10,
-        );
-
-        let m = "The Advanced Encryption Standard (AES), also known by its original name Rijndael (Dutch pronunciation: [ˈrɛindaːl]),[3] is a specification for the encryption of electronic data established by the U.S. National Institute of Standards and Technology (NIST) in 2001.";
-
-        let n = m.len();
-        let c = a.encode(m);
-
-        //dbg!(&c);
-        let m2 = a.decode(&c);
-        //dbg!(&m2);
-        //a.encode_group();
-
-        dbg!(String::from_utf8_lossy(&m2[..n]).to_string());
-    }
-
-    #[test]
-    fn test4() {
-        let a = 123;
-        let b = 111;
-        let c = 23;
-        assert_eq!(galois_mul(a, b), log_sum_exp(a, b));
-        assert_eq!(galois_mul(a, c), log_sum_exp(c, a));
-        assert_eq!(galois_mul(b, 0), log_sum_exp(0, b));
-    }
-
-    #[test]
-    #[ignore]
-    fn test() {
-        let b = BitSquare::from_mat([
-            [101, 187, 113, 232],
-            [31, 249, 224, 13],
-            [84, 77, 68, 73],
-            [97, 236, 39, 55],
-        ]);
-
-        dbg!(&b.to_bytes());
-
-        // b.shift_row();
-        // dbg!(&b);
-        // b.shift_row_inv();
-        // dbg!(&b);
-
-        // let mut c = b; //.clone();
-        // b.sub();
-        // c.sub2();
-        // assert_eq!(b, c);
-
-        // b.sub_inv();
-        // c.sub_inv2();
-        // assert_eq!(b, c);
-
+    fn test_mix_col() {
         let e = BitSquare::from_mat([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]);
         let mut m = BitSquare::from_mat(MIX_MAT);
         let mut n = BitSquare::from_mat(MIX_MAT_INV);
@@ -393,39 +356,93 @@ mod test {
 
         n.mix_col_inv();
         assert_eq!(BitSquare::from_mat(MIX_MAT_INV), n);
+    }
 
-        // for i in 0..N {
-        //     for j in 0..N {
-        //         let sum: i32 = (0..N)
-        //             .into_iter()
-        //             .map(|k| (MIX_MAT[i][k] as i32) * (MIX_MAT_INV[k][j] as i32))
-        //             .sum();
-        //         dbg!(sum);
-        //     }
-        // }
+    #[test]
+    fn test_mul() {
+        let a = 123;
+        let b = 111;
+        let c = 23;
+        assert_eq!(galois_mul(a, b), log_sum_exp(a, b));
+        assert_eq!(galois_mul(a, c), log_sum_exp(c, a));
+        assert_eq!(galois_mul(b, 0), log_sum_exp(0, b));
+    }
 
-        // let mut a = [1, 2, 3, 4, 5, 6, 7];
-        // a.rotate_left(2);
-        // dbg!(a);
+    #[test]
+    fn test_key_manager() {
+        // 128 bits
+        let a = AES::new(&[
+            [1, 2, 3, 4],
+            [5, 6, 7, 8],
+            [9, 10, 11, 12],
+            [13, 14, 15, 16],
+        ]);
 
-        // dbg!(BitSquare::from_row(&[
-        //     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
-        // ]));
-        // dbg!(BitSquare::from_col(&[
-        //     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
-        // ]));
+        assert_eq!(
+            BitSquare::from_mat([
+                [0xBC, 0x6F, 0xA1, 0xB1],
+                [0xC4, 0x1A, 0x81, 0xB1],
+                [0x14, 0x5C, 0x62, 0x40],
+                [0x42, 0x73, 0x65, 0x87]
+            ]),
+            a.keys[a.round]
+        );
+
+        // 256 bits
+        let a = AES::new(&[
+            [1, 2, 3, 4],
+            [5, 6, 7, 8],
+            [9, 10, 11, 12],
+            [13, 14, 15, 16],
+            [17, 18, 19, 20],
+            [21, 22, 23, 24],
+            [25, 26, 27, 28],
+            [29, 30, 31, 32],
+        ]);
+
+        assert_eq!(
+            BitSquare::from_mat([
+                [0xAF, 0x45, 0xAF, 0x95],
+                [0x06, 0xED, 0x70, 0x76],
+                [0x48, 0x58, 0x0C, 0xC8],
+                [0x99, 0x3A, 0xCF, 0xB2]
+            ]),
+            a.keys[a.round]
+        );
+    }
+
+    #[test]
+    fn test_encode_decode() {
+        let a = AES::new(&[
+            [1, 2, 3, 4],
+            [5, 6, 7, 8],
+            [9, 10, 11, 12],
+            [13, 14, 15, 16],
+            [17, 18, 19, 20],
+            [21, 22, 23, 24],
+            [25, 26, 27, 28],
+            [29, 30, 31, 32],
+        ]);
+
+        let m = "The Advanced Encryption Standard (AES), also known by its original name Rijndael (Dutch pronunciation: [ˈrɛindaːl]),[3] is a specification for the encryption of electronic data established by the U.S. National Institute of Standards and Technology (NIST) in 2001.";
+        //dbg!(m.as_bytes());
+
+        let n = m.len();
+        let c = a.encode(m);
+
+        assert_eq!(
+            &c[256..],
+            &[22, 173, 32, 53, 47, 237, 153, 96, 7, 5, 110, 246, 221, 14, 68, 209]
+        );
+        //dbg!(&c);
+        let m2 = a.decode(&c);
+        assert_eq!(String::from_utf8_lossy(&m2[..n]), m);
     }
 }
-
-// BitSquare {
-//     [101, 187, 113, 232],
-//     [31, 249, 224, 13],
-//     [84, 77, 68, 73],
-//     [97, 236, 39, 55]
-// }
 
 // TODO:
 // 为什么是 10 轮
 // 为什么最后一轮, 不需要 mix_col
 // 为什么第一轮需要 add (漂白)
 // 用查表代替 galois_mul
+// ECB VS CBC
