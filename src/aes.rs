@@ -250,7 +250,7 @@ impl AES {
         let nrow = N * (round + 1);
 
         while i < nrow {
-            let mut new = key_manager[i - 1].clone();
+            let mut new = key_manager[i - 1];
             if i % N == 0 {
                 for j in 0..N {
                     new[j] = SUB_BOX[new[j] as usize];
@@ -263,8 +263,8 @@ impl AES {
                 r += 1;
             }
 
-            for j in 0..N {
-                new[j] = new[j] ^ key_manager[i - key_len][j];
+            for (j, new_j) in new.iter_mut().enumerate() {
+                *new_j ^= key_manager[i - key_len][j];
             }
             i += 1;
             key_manager.push(new);
@@ -274,8 +274,8 @@ impl AES {
         for r in 0..=round {
             let mut key = [[0; N]; N];
             for j in 0..N {
-                for i in 0..N {
-                    key[i][j] = key_manager[r * N + j][i];
+                for (i, key_i) in key.iter_mut().enumerate() {
+                    key_i[j] = key_manager[r * N + j][i];
                 }
             }
             keys.push(BitSquare::from_mat(key));
