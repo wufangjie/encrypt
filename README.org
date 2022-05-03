@@ -90,16 +90,16 @@
 
 *** 最大公约数
 #+begin_src python
-  def gcd(a, b): # a >= 0, b >= 0
-      def _gcd(a, b):
-	  return a if b == 0 else _gcd(b, a % b)
-      return _gcd(a, b) if a > b else _gcd(b, a)
+def gcd(a, b): # a >= 0, b >= 0
+    def _gcd(a, b):
+        return a if b == 0 else _gcd(b, a % b)
+    return _gcd(a, b) if a > b else _gcd(b, a)
 #+end_src
 
 *** 求逆元
 尾递归版本, 注: 本实现返回的数可能不在域内 (负数), 需要再 mod p
 #+begin_src python
-  def inv(a, b): # a >= 0, b >= 0
+def inv(a, b): # a >= 0, b >= 0
     def gcd(a, b, k1, k2):
         if b == 1:
             return k2
@@ -233,40 +233,43 @@ a = \sum a_{i} * p^{i}, 其中 a_{i} \in F_{p}, i = 0, 1, ..., m-1
 
 验证是否为生成元, 建表的代码实现如下:
 #+begin_src python
-  def galois_mul(lhs, rhs, p):
-      res = 0
-      while lhs != 0:
-	  if lhs & 1:
-	      res ^= rhs
-	  lhs >>= 1
-	  if rhs & 0x80:
-	      rhs <<= 1
-	      rhs ^= p
-	  else:
-	      rhs <<= 1
-	      rhs &= 0xff
-      return res
+
+def galois_mul(lhs, rhs, p):
+    res = 0
+    while lhs != 0:
+        if lhs & 1:
+            res ^= rhs
+        lhs >>= 1
+        if rhs & 0x80:
+            rhs <<= 1
+            rhs ^= p
+        else:
+            rhs <<= 1
+            rhs &= 0xff
+    return res
 
 
-  def print_hex_table(table):
-      for i in range(16):
-	  print(" ".join(["{:02x}".format(v)
-			  for v in table[i * 16 : (i + 1) * 16]]))
+
+def print_hex_table(table):
+    for i in range(16):
+        print(" ".join(["{:02x}".format(v)
+      		        for v in table[i * 16 : (i + 1) * 16]]))
 
 
-  n = 256
-  exp_table = [0] * n
-  log_table = [0] * n
-  v = 1 # 0 次
-  for i in range(n):
-      exp_table[i] = v
-      log_table[v] = i
-      v = galois_mul(v, 2, 0b100011101)
-      # v = galois_mul(v, 3, 0b100011011)
+n = 256
+exp_table = [0] * n
+log_table = [0] * n
+v = 1 # 0 次
+for i in range(n):
+    exp_table[i] = v
+    log_table[v] = i
+    v = galois_mul(v, 2, 0b100011101)
+    #v = galois_mul(v, 3, 0b100011011)
 
-  print(len(set(exp_table)))
-  print_hex_table(exp_table)
-  print_hex_table(log_table)
+print(len(set(exp_table)))
+print_hex_table(exp_table)
+print('-' * 50)
+print_hex_table(log_table)
 #+end_src
 
 *** 应用
@@ -374,12 +377,12 @@ y^{2} \equiv x^{3} + a * x + b (mod p), 其中 p 为素数, a, b 为非负整数
 1. 规则一: 若 P2 为 P1 的负元, 规定 P1 + P2 = 0
 2. 规则二 (为什么这样定义, 详见下一节的封闭性证明):
 #+begin_src python
-  if (x1, y1) != (x1, y2):
-      k = (y2 - y1) / (x2 - x1)
-  else:
-      k = (3 * x1 ** 2 + a) / (2 * y1)
-  x3 = k ** 2 - x1 - x2
-  y3 = k * (x1 - x3) - y1
+if (x1, y1) != (x1, y2):
+    k = (y2 - y1) / (x2 - x1)
+else:
+    k = (3 * x1 ** 2 + a) / (2 * y1)
+x3 = k ** 2 - x1 - x2
+y3 = k * (x1 - x3) - y1
 #+end_src
 
 + 注1: 很多资料都是把 k 写成 \lambda 的, 其实就是计算斜率
