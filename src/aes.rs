@@ -75,8 +75,22 @@ impl BitSquare {
         Self { data }
     }
 
-    fn from_mat(mat: [[u8; N]; N]) -> Self {
-        Self { data: mat }
+    fn from_rows(mat: &[[u8; N]]) -> Self {
+        let mut data = [[0; N]; N];
+        for (i, data_i) in data.iter_mut().enumerate() {
+            *data_i = mat[i];
+        }
+        Self { data }
+    }
+
+    fn from_cols(mat: &[[u8; N]]) -> Self {
+        let mut data = [[0; N]; N];
+        for (i, data_i) in data.iter_mut().enumerate() {
+            for (j, data_i_j) in data_i.iter_mut().enumerate() {
+                *data_i_j = mat[j][i];
+            }
+        }
+        Self { data }
     }
 
     fn to_bytes(self) -> Vec<u8> {
@@ -91,8 +105,18 @@ impl BitSquare {
 }
 
 impl BitSquare {
+    fn add(&self, other: &Self) -> Self {
+        let mut new = Self::new();
+        for i in 0..N {
+            for j in 0..N {
+                new[i][j] = self[i][j] ^ other[i][j];
+            }
+        }
+        new
+    }
+
     /// 密钥加法 (异或操作, 加密解密同)
-    fn add(&mut self, other: Self) {
+    fn add_(&mut self, other: &Self) {
         for i in 0..N {
             for j in 0..N {
                 self[i][j] ^= other[i][j];
@@ -278,76 +302,129 @@ impl AES {
                     key_i[j] = key_manager[r * N + j][i];
                 }
             }
-            keys.push(BitSquare::from_mat(key));
+            keys.push(BitSquare::from_rows(&key));
         }
-        //dbg!(&keys[1]);
         Self { round, keys }
     }
 
-    /// encode msg (bytes)
-    pub fn encode(&self, msg: &str) -> Vec<u8> {
-        // EBC 可以并行计算, CBC 每个 block 开始加密前要先和之前的加密结果 XOR
+    pub fn encode_ecb(&self, msg: &[u8]) -> Vec<u8> {
+        // ECB 可以并行计算, CBC 每个 block 开始加密前要先和之前的加密结果 XOR
         let mut res = Vec::new();
-        //let mut iter = msg.as_bytes().iter();
-        for s in msg.as_bytes().chunks(16) {
-            let mut block = BitSquare::from_col(s);
+        for m in msg.chunks(16) {
+            let mut block = BitSquare::from_col(m);
             self.encode_block(&mut block);
             res.extend(block.to_bytes());
         }
-
-        // while !iter.is_empty() {
-        //     self.encode_block(iter.take(N * N));
-        // }
         res
     }
 
-    /// decode msg (bytes)
-    pub fn decode(&self, msg: &[u8]) -> Vec<u8> {
+    pub fn decode_ecb(&self, msg: &[u8]) -> Vec<u8> {
         let mut res = Vec::new();
-        for s in msg.chunks(16) {
-            let mut block = BitSquare::from_col(s);
+        for m in msg.chunks(16) {
+            let mut block = BitSquare::from_col(m);
             self.decode_block(&mut block);
             res.extend(block.to_bytes());
         }
         res
     }
 
+    pub fn encode_cbc(&self, msg: &[u8], mut iv: BitSquare) -> Vec<u8> {
+        // iv means init vector
+        let mut res = Vec::new();
+        for m in msg.chunks(16) {
+            let mut block = BitSquare::from_col(m);
+            block.add_(&iv);
+            self.encode_block(&mut block);
+            iv = block;
+            res.extend(block.to_bytes());
+        }
+        res
+    }
+
+    pub fn decode_cbc(&self, msg: &[u8], mut iv: BitSquare) -> Vec<u8> {
+        let mut res = Vec::new();
+        for m in msg.chunks(16) {
+            let mut block = BitSquare::from_col(m);
+            let block_bak = block;
+            self.decode_block(&mut block);
+            block.add_(&iv);
+            iv = block_bak;
+            res.extend(block.to_bytes());
+        }
+        res
+    }
+
+    /// decode ige mode (for telegram)
+    pub fn encode_ige(&self, msg: &[u8], ivs: (BitSquare, BitSquare)) -> Vec<u8> {
+        let (mut y_prev, mut x_prev) = ivs;
+        let mut res = Vec::new();
+        for m in msg.chunks(16) {
+            let mut block = BitSquare::from_col(m);
+            let block_bak = block;
+            block.add_(&y_prev);
+            self.encode_block(&mut block);
+            block.add_(&x_prev);
+            y_prev = block;
+            x_prev = block_bak;
+            res.extend(block.to_bytes());
+        }
+        res
+    }
+
+    /// decode ige mode (for telegram)
+    pub fn decode_ige(&self, msg: &[u8], ivs: (BitSquare, BitSquare)) -> Vec<u8> {
+        let (mut y_prev, mut x_prev) = ivs;
+        let mut res = Vec::new();
+        for m in msg.chunks(16) {
+            let mut block = BitSquare::from_col(m);
+            let block_bak = block;
+            block.add_(&x_prev);
+            self.decode_block(&mut block);
+            block.add_(&y_prev);
+            x_prev = block;
+            y_prev = block_bak;
+            res.extend(block.to_bytes());
+        }
+        res
+    }
+
     fn encode_block(&self, msg: &mut BitSquare) {
-        msg.add(self.keys[0]);
+        msg.add_(&self.keys[0]);
         for i in 1..self.round {
             msg.sub();
             msg.shift_row();
             msg.mix_col();
-            msg.add(self.keys[i])
+            msg.add_(&self.keys[i])
         }
         msg.sub();
         msg.shift_row();
-        msg.add(self.keys[self.round]);
+        msg.add_(&self.keys[self.round]);
     }
 
     fn decode_block(&self, msg: &mut BitSquare) {
-        msg.add(self.keys[self.round]);
+        msg.add_(&self.keys[self.round]);
         msg.shift_row_inv();
         msg.sub_inv();
         for i in (1..self.round).into_iter().rev() {
-            msg.add(self.keys[i]);
+            msg.add_(&self.keys[i]);
             msg.mix_col_inv();
             msg.shift_row_inv();
             msg.sub_inv();
         }
-        msg.add(self.keys[0]);
+        msg.add_(&self.keys[0]);
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::conv::hex_to_bytes;
 
     #[test]
     fn test_mix_col() {
-        let e = BitSquare::from_mat([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]);
-        let mut m = BitSquare::from_mat(MIX_MAT);
-        let mut n = BitSquare::from_mat(MIX_MAT_INV);
+        let e = BitSquare::from_rows(&[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]);
+        let mut m = BitSquare::from_rows(&MIX_MAT);
+        let mut n = BitSquare::from_rows(&MIX_MAT_INV);
 
         n.mix_col();
         assert_eq!(e, n);
@@ -355,7 +432,7 @@ mod test {
         assert_eq!(e, m);
 
         n.mix_col_inv();
-        assert_eq!(BitSquare::from_mat(MIX_MAT_INV), n);
+        assert_eq!(BitSquare::from_rows(&MIX_MAT_INV), n);
     }
 
     #[test]
@@ -379,7 +456,7 @@ mod test {
         ]);
 
         assert_eq!(
-            BitSquare::from_mat([
+            BitSquare::from_rows(&[
                 [0xBC, 0x6F, 0xA1, 0xB1],
                 [0xC4, 0x1A, 0x81, 0xB1],
                 [0x14, 0x5C, 0x62, 0x40],
@@ -401,7 +478,7 @@ mod test {
         ]);
 
         assert_eq!(
-            BitSquare::from_mat([
+            BitSquare::from_rows(&[
                 [0xAF, 0x45, 0xAF, 0x95],
                 [0x06, 0xED, 0x70, 0x76],
                 [0x48, 0x58, 0x0C, 0xC8],
@@ -412,7 +489,7 @@ mod test {
     }
 
     #[test]
-    fn test_encode_decode() {
+    fn test_ecb() {
         let a = AES::new(&[
             [1, 2, 3, 4],
             [5, 6, 7, 8],
@@ -428,21 +505,125 @@ mod test {
         //dbg!(m.as_bytes());
 
         let n = m.len();
-        let c = a.encode(m);
+        let c = a.encode_ecb(m.as_bytes());
 
         assert_eq!(
             &c[256..],
             &[22, 173, 32, 53, 47, 237, 153, 96, 7, 5, 110, 246, 221, 14, 68, 209]
         );
         //dbg!(&c);
-        let m2 = a.decode(&c);
+        let m2 = a.decode_ecb(&c);
         assert_eq!(String::from_utf8_lossy(&m2[..n]), m);
+    }
+
+    fn format_hex4(bytes: &[u8]) -> String {
+        let mut res = String::new();
+        for (i, v) in bytes.iter().enumerate() {
+            if i != 0 && i % 4 == 0 {
+                res.push(' ');
+            }
+            res.push_str(&format!("{:02X}", v));
+        }
+        res
+    }
+
+    #[test]
+    fn test_ige() {
+        // see https://mgp25.com/AESIGE/
+        let data = [
+            [0, 1, 2, 3],
+            [4, 5, 6, 7],
+            [8, 9, 10, 11],
+            [12, 13, 14, 15],
+            [16, 17, 18, 19],
+            [20, 21, 22, 23],
+            [24, 25, 26, 27],
+            [28, 29, 30, 31],
+        ];
+
+        let a = AES::new(&data[..4]);
+        let ivs = (
+            BitSquare::from_cols(&data[..4]),
+            BitSquare::from_cols(&data[4..8]),
+        );
+        let block = vec![0; 32];
+
+        let cipher = a.encode_ige(&block, ivs);
+        assert_eq!(
+            format_hex4(&cipher),
+            "1A8519A6 557BE652 E9DA8E43 DA4EF445 3CF456B4 CA488AA3 83C79C98 B34797CB"
+        );
+
+        let origin = a.decode_ige(&cipher, ivs);
+        assert_eq!(
+            format_hex4(&origin),
+            "00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000"
+        );
+
+        let a = AES::new(&[
+            [0x54, 0x68, 0x69, 0x73],
+            [0x20, 0x69, 0x73, 0x20],
+            [0x61, 0x6E, 0x20, 0x69],
+            [0x6D, 0x70, 0x6C, 0x65],
+        ]);
+
+        let iv1 = BitSquare::from_col(
+            &hex_to_bytes("6D656E74 6174696F 6E206F66 20494745".replace(' ', "")).unwrap(),
+        );
+        let iv2 = BitSquare::from_col(
+            &hex_to_bytes("206D6F64 6520666F 72204F70 656E5353".replace(' ', "")).unwrap(),
+        );
+
+        let block = hex_to_bytes(
+            "99706487 A1CDE613 BC6DE0B6 F24B1C7A A448C8B9 C3403E34 67A8CAD8 9340F53B"
+                .replace(' ', ""),
+        )
+        .unwrap();
+
+        let cipher = a.encode_ige(&block, (iv1, iv2));
+        assert_eq!(
+            format_hex4(&cipher),
+            "4C2E204C 65742773 20686F70 65204265 6E20676F 74206974 20726967 6874210A"
+        );
+
+        let origin = a.decode_ige(&cipher, (iv1, iv2));
+        assert_eq!(
+            format_hex4(&origin),
+            "99706487 A1CDE613 BC6DE0B6 F24B1C7A A448C8B9 C3403E34 67A8CAD8 9340F53B"
+        )
+    }
+
+    #[test]
+    fn test_cbc() {
+        let a = AES::new(&[
+            [0x54, 0x68, 0x69, 0x73],
+            [0x20, 0x69, 0x73, 0x20],
+            [0x61, 0x6E, 0x20, 0x69],
+            [0x6D, 0x70, 0x6C, 0x65],
+        ]);
+
+        let iv = BitSquare::from_col(
+            &hex_to_bytes("6D656E74 6174696F 6E206F66 20494745".replace(' ', "")).unwrap(),
+        );
+
+        let block = hex_to_bytes(
+            "99706487 A1CDE613 BC6DE0B6 F24B1C7A A448C8B9 C3403E34 67A8CAD8 9340F53B"
+                .replace(' ', ""),
+        )
+        .unwrap();
+
+        let cipher = a.encode_cbc(&block, iv);
+        let origin = a.decode_cbc(&cipher, iv);
+        assert_eq!(
+            format_hex4(&origin),
+            "99706487 A1CDE613 BC6DE0B6 F24B1C7A A448C8B9 C3403E34 67A8CAD8 9340F53B"
+        );
     }
 }
 
 // TODO:
 // 为什么是 10 轮
 // 为什么最后一轮, 不需要 mix_col
-// 为什么第一轮需要 add (漂白)
+// 为什么第一轮需要 adda_ssign (漂白)
 // 用查表代替 galois_mul
 // ECB VS CBC
