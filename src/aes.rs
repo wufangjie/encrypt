@@ -226,6 +226,7 @@ pub struct AES {
 }
 
 impl AES {
+    /// deprecated
     pub fn new2(key: BitSquare) -> Self {
         let round = 10;
         let mut keys = Vec::<BitSquare>::with_capacity(11);
@@ -624,6 +625,4 @@ mod test {
 // TODO:
 // 为什么是 10 轮
 // 为什么最后一轮, 不需要 mix_col
-// 为什么第一轮需要 adda_ssign (漂白)
-// 用查表代替 galois_mul
-// ECB VS CBC
+// 为什么第一轮需要 add_ (漂白)

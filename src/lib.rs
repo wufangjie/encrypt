@@ -9,3 +9,5 @@ pub use ecc::ECC;
 pub mod conv;
 
 pub mod error;
+
+pub mod ecc_bigint;
