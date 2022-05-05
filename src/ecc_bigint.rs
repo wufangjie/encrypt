@@ -218,64 +218,108 @@ impl ECC {
     }
 }
 
-#[test]
-fn test_gfp() {
-    let fp = GFP::new(BigUint::from(23u8));
-    assert_eq!(BigUint::from(15u8), fp.calc_inv(&BigUint::from(20u8)));
-    assert_eq!(BigUint::from(17u8), fp.calc_inv(&BigUint::from(19u8)));
-}
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::conv::hex_to_bytes;
 
-#[test]
-fn test_ecc() {
-    let ec = ECC::new(BigUint::from(23u8), BigUint::from(1u8), BigUint::from(1u8));
-
-    assert_eq!(
-        Point::new_u32(17, 20),
-        ec.add(&Point::new_u32(3, 10), &Point::new_u32(9, 7))
-    );
-
-    for i in 2..10u8 {
-        let i = BigUint::from_bytes_be(&i.to_be_bytes());
-        let p = ec.mul(&i, &Point::new_u32(3, 10));
-        assert!(ec.contains(&p));
-        assert_eq!(p, ec.mul(&i, &Point::new_u32(3, 10)));
+    #[test]
+    fn test_gfp() {
+        let fp = GFP::new(BigUint::from(23u8));
+        assert_eq!(BigUint::from(15u8), fp.calc_inv(&BigUint::from(20u8)));
+        assert_eq!(BigUint::from(17u8), fp.calc_inv(&BigUint::from(19u8)));
     }
 
-    assert_eq!(
-        Point::new_u32(4, 0),
-        ec.mul(&BigUint::from(14u8), &Point::new_u32(3, 10))
-    );
-    assert_eq!(
-        Point::new_u32(3, 13),
-        ec.mul(&BigUint::from(27u8), &Point::new_u32(3, 10))
-    );
-    assert!(ec
-        .mul(&BigUint::from(28u8), &Point::new_u32(3, 10))
-        .is_zero());
-    assert_eq!(
-        Point::new_u32(3, 10),
-        ec.mul(&BigUint::from(29u8), &Point::new_u32(3, 10))
-    );
-    assert!(ec
-        .sub(&Point::new_u32(3, 10), &Point::new_u32(3, 10))
-        .is_zero());
-    assert_eq!(
-        Point::new_u32(7, 12),
-        ec.sub(&Point::new_u32(3, 10), &Point::new_u32(3, 13))
-    );
+    #[test]
+    fn test_ecc() {
+        let ec = ECC::new(BigUint::from(23u8), BigUint::from(1u8), BigUint::from(1u8));
 
-    // the order of EC(23, 1, 1) is 28, no matter the G is
-    for i in 1..28u8 {
-        let i = BigUint::from_bytes_be(&i.to_be_bytes());
-        let ord = BigUint::from(28u8);
-        assert!(ec.mul(&ord, &ec.mul(&i, &Point::new_u32(3, 10))).is_zero());
+        assert_eq!(
+            Point::new_u32(17, 20),
+            ec.add(&Point::new_u32(3, 10), &Point::new_u32(9, 7))
+        );
+
+        for i in 2..10u8 {
+            let i = BigUint::from_bytes_be(&i.to_be_bytes());
+            let p = ec.mul(&i, &Point::new_u32(3, 10));
+            assert!(ec.contains(&p));
+            assert_eq!(p, ec.mul(&i, &Point::new_u32(3, 10)));
+        }
+
+        assert_eq!(
+            Point::new_u32(4, 0),
+            ec.mul(&BigUint::from(14u8), &Point::new_u32(3, 10))
+        );
+        assert_eq!(
+            Point::new_u32(3, 13),
+            ec.mul(&BigUint::from(27u8), &Point::new_u32(3, 10))
+        );
+        assert!(ec
+            .mul(&BigUint::from(28u8), &Point::new_u32(3, 10))
+            .is_zero());
+        assert_eq!(
+            Point::new_u32(3, 10),
+            ec.mul(&BigUint::from(29u8), &Point::new_u32(3, 10))
+        );
+        assert!(ec
+            .sub(&Point::new_u32(3, 10), &Point::new_u32(3, 10))
+            .is_zero());
+        assert_eq!(
+            Point::new_u32(7, 12),
+            ec.sub(&Point::new_u32(3, 10), &Point::new_u32(3, 13))
+        );
+
+        // the order of EC(23, 1, 1) is 28, no matter the G is
+        for i in 1..28u8 {
+            let i = BigUint::from_bytes_be(&i.to_be_bytes());
+            let ord = BigUint::from(28u8);
+            assert!(ec.mul(&ord, &ec.mul(&i, &Point::new_u32(3, 10))).is_zero());
+        }
+
+        for i in 1..28u8 {
+            let bi = BigUint::from_bytes_be(&i.to_be_bytes());
+            let g = ec.mul(&bi, &Point::new_u32(3, 10));
+            for j in 1..29u8 {
+                let bj = BigUint::from_bytes_be(&j.to_be_bytes());
+                if ec.mul(&bj, &g).is_zero() {
+                    println!("{}, {}", i, j); // j 是 28 的因子
+                    break;
+                }
+            }
+        }
     }
+
+    fn from_format_hex4(s: &str) -> BigUint {
+        BigUint::from_bytes_be(&hex_to_bytes(s.replace(' ', "")).unwrap())
+    }
+
+    #[test]
+    fn test_secp256k1() {
+        // https://en.bitcoin.it/wiki/Secp256k1
+        let p_str = "FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFE FFFFFC2F";
+        let x_str = "79BE667E F9DCBBAC 55A06295 CE870B07 029BFCDB 2DCE28D9 59F2815B 16F81798";
+        let y_str = "483ADA77 26A3C465 5DA4FBFC 0E1108A8 FD17B448 A6855419 9C47D08F FB10D4B8";
+        let n_str = "FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFE BAAEDCE6 AF48A03B BFD25E8C D0364141"; // order
+
+        let p = from_format_hex4(p_str);
+        let ec = ECC::new(p, BigUint::zero(), BigUint::from(7u8));
+
+        let g = Point::new(from_format_hex4(x_str), from_format_hex4(y_str));
+        assert!(ec.contains(&g));
+
+        let n = from_format_hex4(n_str);
+        assert!(ec.mul(&n, &g).is_zero());
+
+        // up to here cost 0.335 secs
+    }
+
+    #[test]
+    fn test_elgamal() {
+	// TODO: does M need to be on the curve (seems no easy?)
+    }
+
+    #[test]
+    fn test_ecdsa() {}
+
+    // TODO: add bigint test example (test speed)
 }
-
-#[test]
-fn test_elgamal() {}
-
-#[test]
-fn test_ecdsa() {}
-
-// TODO: add bigint test example (test speed)
