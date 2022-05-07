@@ -34,11 +34,11 @@ fn main() {
 
 
 	let timer = std::time::Instant::now();
-	g.modpow(&a, &p).modpow(&b, &p);
+	let ab = g.modpow(&a, &p).modpow(&b, &p);
         println!("cost: {:?}", timer.elapsed());
 
 	assert_eq!(
-            g.modpow(&a, &p).modpow(&b, &p), // --release about 20ms
+            ab,
             g.modpow(&b, &p).modpow(&a, &p)
         );
 
