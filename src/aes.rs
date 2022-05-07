@@ -314,7 +314,7 @@ impl AES {
 
     pub fn encode_ecb(&self, msg: &[u8]) -> Vec<u8> {
         // ECB 可以并行计算, CBC 每个 block 开始加密前要先和之前的加密结果 XOR
-        let mut res = Vec::new();
+        let mut res = Vec::with_capacity(msg.len());
         for m in msg.chunks(16) {
             let mut block = ByteSquare::from_col(m);
             self.encode_block(&mut block);
@@ -324,7 +324,7 @@ impl AES {
     }
 
     pub fn decode_ecb(&self, msg: &[u8]) -> Vec<u8> {
-        let mut res = Vec::new();
+        let mut res = Vec::with_capacity(msg.len());
         for m in msg.chunks(16) {
             let mut block = ByteSquare::from_col(m);
             self.decode_block(&mut block);
@@ -335,7 +335,7 @@ impl AES {
 
     pub fn encode_cbc(&self, msg: &[u8], mut iv: ByteSquare) -> Vec<u8> {
         // iv means init vector
-        let mut res = Vec::new();
+        let mut res = Vec::with_capacity(msg.len());
         for m in msg.chunks(16) {
             let mut block = ByteSquare::from_col(m);
             block.add_(&iv);
@@ -347,7 +347,7 @@ impl AES {
     }
 
     pub fn decode_cbc(&self, msg: &[u8], mut iv: ByteSquare) -> Vec<u8> {
-        let mut res = Vec::new();
+        let mut res = Vec::with_capacity(msg.len());
         for m in msg.chunks(16) {
             let mut block = ByteSquare::from_col(m);
             let block_bak = block;
@@ -362,7 +362,7 @@ impl AES {
     /// decode ige mode (for telegram)
     pub fn encode_ige(&self, msg: &[u8], ivs: (ByteSquare, ByteSquare)) -> Vec<u8> {
         let (mut y_prev, mut x_prev) = ivs;
-        let mut res = Vec::new();
+        let mut res = Vec::with_capacity(msg.len());
         for m in msg.chunks(16) {
             let mut block = ByteSquare::from_col(m);
             let block_bak = block;
@@ -379,7 +379,7 @@ impl AES {
     /// decode ige mode (for telegram)
     pub fn decode_ige(&self, msg: &[u8], ivs: (ByteSquare, ByteSquare)) -> Vec<u8> {
         let (mut y_prev, mut x_prev) = ivs;
-        let mut res = Vec::new();
+        let mut res = Vec::with_capacity(msg.len());
         for m in msg.chunks(16) {
             let mut block = ByteSquare::from_col(m);
             let block_bak = block;
