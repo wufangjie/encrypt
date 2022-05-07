@@ -15,10 +15,9 @@ impl Point {
     }
 
     pub fn new_u32(x: u32, y: u32) -> Self {
-        // TODO: find a more elegant way
         Self {
-            x: BigUint::from_bytes_be(&x.to_be_bytes()),
-            y: BigUint::from_bytes_be(&y.to_be_bytes()),
+            x: BigUint::from(x),
+            y: BigUint::from(y),
         }
     }
 
@@ -240,7 +239,7 @@ mod test {
         );
 
         for i in 2..10u8 {
-            let i = BigUint::from_bytes_be(&i.to_be_bytes());
+            let i = BigUint::from(i);
             let p = ec.mul(&i, &Point::new_u32(3, 10));
             assert!(ec.contains(&p));
             assert_eq!(p, ec.mul(&i, &Point::new_u32(3, 10)));
@@ -271,16 +270,16 @@ mod test {
 
         // the order of EC(23, 1, 1) is 28, no matter the G is
         for i in 1..28u8 {
-            let i = BigUint::from_bytes_be(&i.to_be_bytes());
+            let i = BigUint::from(i);
             let ord = BigUint::from(28u8);
             assert!(ec.mul(&ord, &ec.mul(&i, &Point::new_u32(3, 10))).is_zero());
         }
 
         for i in 1..28u8 {
-            let bi = BigUint::from_bytes_be(&i.to_be_bytes());
+            let bi = BigUint::from(i);
             let g = ec.mul(&bi, &Point::new_u32(3, 10));
             for j in 1..29u8 {
-                let bj = BigUint::from_bytes_be(&j.to_be_bytes());
+                let bj = BigUint::from(j);
                 if ec.mul(&bj, &g).is_zero() {
                     println!("{}, {}", i, j); // j 是 28 的因子
                     break;
@@ -310,12 +309,17 @@ mod test {
         let n = from_format_hex4(n_str);
         assert!(ec.mul(&n, &g).is_zero());
 
-        // up to here cost 0.335 secs
+        // up to here cost 0.335 secs in release mode
+    }
+
+    #[test]
+    fn test_eval_y_from_x() {
+        // TODO: 网上找了一些方法, 貌似都不行, 不过反正也没怎么用到, 就先不实现了
     }
 
     #[test]
     fn test_elgamal() {
-	// TODO: does M need to be on the curve (seems no easy?)
+        // TODO: does M need to be on the curve (seems no easy?)
     }
 
     #[test]
@@ -323,3 +327,9 @@ mod test {
 
     // TODO: add bigint test example (test speed)
 }
+
+// four way convert primitive to bigint:
+// BigUint::from(i) // NOTE: if i in 1..2 loop, then you should add type, such as 1..2u8
+// BigUint::from(i as u8)
+// BigUint::from_bytes_be(i.to_be_bytes())
+// <BigUint as From<u8>>::from(i)
