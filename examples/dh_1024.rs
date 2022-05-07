@@ -1,10 +1,9 @@
 extern crate encrypt;
 
+use encrypt::conv::bytes_to_hex_lower;
 use num_bigint::BigUint;
 use num_primes::{Generator, Verification};
 use num_traits::{One, ToPrimitive}; // , Zero
-use encrypt::conv::bytes_to_hex_lower;
-
 
 fn main() {
     // let a = Generator::new_prime(2048);
@@ -22,28 +21,21 @@ fn main() {
     let a = Generator::new_uint(1024).modpow(&one, &p);
     let b = Generator::new_uint(1024).modpow(&one, &p);
 
-
     // for python
     dbg!(bytes_to_hex_lower(&p.to_bytes_be()));
     dbg!(bytes_to_hex_lower(&a.to_bytes_be()));
     dbg!(bytes_to_hex_lower(&b.to_bytes_be()));
 
     for g in get_possible_generator(&p) {
-	println!("g = {}", g);
-	let g = BigUint::from(g);
+        println!("g = {}", g);
+        let g = BigUint::from(g);
 
-
-	let timer = std::time::Instant::now();
-	let ab = g.modpow(&a, &p).modpow(&b, &p);
+        let timer = std::time::Instant::now();
+        let ab = g.modpow(&a, &p).modpow(&b, &p);
         println!("cost: {:?}", timer.elapsed());
 
-	assert_eq!(
-            ab,
-            g.modpow(&b, &p).modpow(&a, &p)
-        );
-
+        assert_eq!(ab, g.modpow(&b, &p).modpow(&a, &p));
     }
-
 }
 
 fn get_possible_generator(p: &BigUint) -> Vec<u8> {
