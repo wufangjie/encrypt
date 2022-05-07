@@ -220,7 +220,7 @@ impl ECC {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::conv::hex_to_bytes;
+    use crate::conv::{bytes_to_hex_upper, hex_to_bytes};
 
     #[test]
     fn test_gfp() {
@@ -286,30 +286,6 @@ mod test {
                 }
             }
         }
-    }
-
-    fn from_format_hex4(s: &str) -> BigUint {
-        BigUint::from_bytes_be(&hex_to_bytes(s.replace(' ', "")).unwrap())
-    }
-
-    #[test]
-    fn test_secp256k1() {
-        // https://en.bitcoin.it/wiki/Secp256k1
-        let p_str = "FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFE FFFFFC2F";
-        let x_str = "79BE667E F9DCBBAC 55A06295 CE870B07 029BFCDB 2DCE28D9 59F2815B 16F81798";
-        let y_str = "483ADA77 26A3C465 5DA4FBFC 0E1108A8 FD17B448 A6855419 9C47D08F FB10D4B8";
-        let n_str = "FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFE BAAEDCE6 AF48A03B BFD25E8C D0364141"; // order
-
-        let p = from_format_hex4(p_str);
-        let ec = ECC::new(p, BigUint::zero(), BigUint::from(7u8));
-
-        let g = Point::new(from_format_hex4(x_str), from_format_hex4(y_str));
-        assert!(ec.contains(&g));
-
-        let n = from_format_hex4(n_str);
-        assert!(ec.mul(&n, &g).is_zero());
-
-        // up to here cost 0.335 secs in release mode
     }
 
     #[test]
