@@ -7,13 +7,13 @@ use std::ops::{Deref, DerefMut};
 const N: usize = 4;
 
 #[derive(Clone, Copy, PartialEq)]
-pub struct BitSquare {
+pub struct ByteSquare {
     pub(crate) data: [[u8; N]; N],
 }
 
-impl fmt::Display for BitSquare {
+impl fmt::Display for ByteSquare {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "BitSquare {{")?;
+        writeln!(f, "ByteSquare {{")?;
         for i in 0..N {
             //self.data[i].map(|x|
             let s = self.data[i]
@@ -27,19 +27,19 @@ impl fmt::Display for BitSquare {
     }
 }
 
-impl fmt::Debug for BitSquare {
+impl fmt::Debug for ByteSquare {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Display::fmt(self, f)
     }
 }
 
-impl Default for BitSquare {
+impl Default for ByteSquare {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Deref for BitSquare {
+impl Deref for ByteSquare {
     type Target = [[u8; N]; N];
 
     fn deref(&self) -> &Self::Target {
@@ -47,14 +47,14 @@ impl Deref for BitSquare {
     }
 }
 
-impl DerefMut for BitSquare {
+impl DerefMut for ByteSquare {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.data
     }
 }
 
-impl BitSquare {
-    fn new() -> Self {
+impl ByteSquare {
+    pub fn new() -> Self {
         Self { data: [[0; N]; N] }
     }
 
@@ -67,7 +67,7 @@ impl BitSquare {
     //     Self { data }
     // }
 
-    fn from_col(col: &[u8]) -> Self {
+    pub fn from_col(col: &[u8]) -> Self {
         let mut data = [[0; N]; N];
         for (i, v) in col.iter().take(N * N).enumerate() {
             data[i % N][i / N] = *v;
@@ -75,7 +75,7 @@ impl BitSquare {
         Self { data }
     }
 
-    fn from_rows(mat: &[[u8; N]]) -> Self {
+    pub fn from_rows(mat: &[[u8; N]]) -> Self {
         let mut data = [[0; N]; N];
         for (i, data_i) in data.iter_mut().enumerate() {
             *data_i = mat[i];
@@ -83,7 +83,7 @@ impl BitSquare {
         Self { data }
     }
 
-    fn from_cols(mat: &[[u8; N]]) -> Self {
+    pub fn from_cols(mat: &[[u8; N]]) -> Self {
         let mut data = [[0; N]; N];
         for (i, data_i) in data.iter_mut().enumerate() {
             for (j, data_i_j) in data_i.iter_mut().enumerate() {
@@ -93,7 +93,7 @@ impl BitSquare {
         Self { data }
     }
 
-    fn to_bytes(self) -> Vec<u8> {
+    pub fn to_bytes(self) -> Vec<u8> {
         let mut res = Vec::with_capacity(N * N);
         for j in 0..N {
             for i in 0..N {
@@ -104,7 +104,7 @@ impl BitSquare {
     }
 }
 
-impl BitSquare {
+impl ByteSquare {
     fn add(&self, other: &Self) -> Self {
         let mut new = Self::new();
         for i in 0..N {
@@ -222,18 +222,18 @@ fn log_sum_exp(lhs: u8, rhs: u8) -> u8 {
 #[derive(Debug)]
 pub struct AES {
     round: usize,
-    pub(crate) keys: Vec<BitSquare>,
+    pub(crate) keys: Vec<ByteSquare>,
 }
 
 impl AES {
     /// deprecated
-    pub fn new2(key: BitSquare) -> Self {
+    pub fn new2(key: ByteSquare) -> Self {
         let round = 10;
-        let mut keys = Vec::<BitSquare>::with_capacity(11);
+        let mut keys = Vec::<ByteSquare>::with_capacity(11);
         keys.push(key);
 
         for r in 0..round {
-            let mut new = BitSquare::new();
+            let mut new = ByteSquare::new();
 
             for i in 0..N {
                 new[i][0] = SUB_BOX[keys[r][(i + 1) % N][N - 1] as usize] ^ keys[r][i][0];
@@ -253,10 +253,10 @@ impl AES {
     }
 
     /// row style key
-    pub fn new(key: &[[u8; N]]) -> Self {
-        //fn gen(&self) -> Vec<BitSquare> {
+    pub fn new(key: &[u8]) -> Self {
+        //fn gen(&self) -> Vec<ByteSquare> {
         // NOTE: 这个密钥的生成, 没有所谓的逆过程, 就是提前算好, 然后逆序解密
-        let key_len = key.len();
+        let key_len = key.len() / N;
 
         let round = match key_len {
             4 => 10,
@@ -266,8 +266,12 @@ impl AES {
         };
 
         let mut key_manager = vec![];
-        for row in key {
-            key_manager.push(*row);
+        for row in key.chunks(N) {
+            let mut new = [0; N];
+            for i in 0..N {
+                new[i] = row[i];
+            }
+            key_manager.push(new);
         }
 
         let mut i = key_len;
@@ -295,7 +299,7 @@ impl AES {
             key_manager.push(new);
         }
 
-        let mut keys = Vec::<BitSquare>::with_capacity(1 + round);
+        let mut keys = Vec::<ByteSquare>::with_capacity(1 + round);
         for r in 0..=round {
             let mut key = [[0; N]; N];
             for j in 0..N {
@@ -303,7 +307,7 @@ impl AES {
                     key_i[j] = key_manager[r * N + j][i];
                 }
             }
-            keys.push(BitSquare::from_rows(&key));
+            keys.push(ByteSquare::from_rows(&key));
         }
         Self { round, keys }
     }
@@ -312,7 +316,7 @@ impl AES {
         // ECB 可以并行计算, CBC 每个 block 开始加密前要先和之前的加密结果 XOR
         let mut res = Vec::new();
         for m in msg.chunks(16) {
-            let mut block = BitSquare::from_col(m);
+            let mut block = ByteSquare::from_col(m);
             self.encode_block(&mut block);
             res.extend(block.to_bytes());
         }
@@ -322,18 +326,18 @@ impl AES {
     pub fn decode_ecb(&self, msg: &[u8]) -> Vec<u8> {
         let mut res = Vec::new();
         for m in msg.chunks(16) {
-            let mut block = BitSquare::from_col(m);
+            let mut block = ByteSquare::from_col(m);
             self.decode_block(&mut block);
             res.extend(block.to_bytes());
         }
         res
     }
 
-    pub fn encode_cbc(&self, msg: &[u8], mut iv: BitSquare) -> Vec<u8> {
+    pub fn encode_cbc(&self, msg: &[u8], mut iv: ByteSquare) -> Vec<u8> {
         // iv means init vector
         let mut res = Vec::new();
         for m in msg.chunks(16) {
-            let mut block = BitSquare::from_col(m);
+            let mut block = ByteSquare::from_col(m);
             block.add_(&iv);
             self.encode_block(&mut block);
             iv = block;
@@ -342,10 +346,10 @@ impl AES {
         res
     }
 
-    pub fn decode_cbc(&self, msg: &[u8], mut iv: BitSquare) -> Vec<u8> {
+    pub fn decode_cbc(&self, msg: &[u8], mut iv: ByteSquare) -> Vec<u8> {
         let mut res = Vec::new();
         for m in msg.chunks(16) {
-            let mut block = BitSquare::from_col(m);
+            let mut block = ByteSquare::from_col(m);
             let block_bak = block;
             self.decode_block(&mut block);
             block.add_(&iv);
@@ -356,11 +360,11 @@ impl AES {
     }
 
     /// decode ige mode (for telegram)
-    pub fn encode_ige(&self, msg: &[u8], ivs: (BitSquare, BitSquare)) -> Vec<u8> {
+    pub fn encode_ige(&self, msg: &[u8], ivs: (ByteSquare, ByteSquare)) -> Vec<u8> {
         let (mut y_prev, mut x_prev) = ivs;
         let mut res = Vec::new();
         for m in msg.chunks(16) {
-            let mut block = BitSquare::from_col(m);
+            let mut block = ByteSquare::from_col(m);
             let block_bak = block;
             block.add_(&y_prev);
             self.encode_block(&mut block);
@@ -373,11 +377,11 @@ impl AES {
     }
 
     /// decode ige mode (for telegram)
-    pub fn decode_ige(&self, msg: &[u8], ivs: (BitSquare, BitSquare)) -> Vec<u8> {
+    pub fn decode_ige(&self, msg: &[u8], ivs: (ByteSquare, ByteSquare)) -> Vec<u8> {
         let (mut y_prev, mut x_prev) = ivs;
         let mut res = Vec::new();
         for m in msg.chunks(16) {
-            let mut block = BitSquare::from_col(m);
+            let mut block = ByteSquare::from_col(m);
             let block_bak = block;
             block.add_(&x_prev);
             self.decode_block(&mut block);
@@ -389,7 +393,7 @@ impl AES {
         res
     }
 
-    fn encode_block(&self, msg: &mut BitSquare) {
+    fn encode_block(&self, msg: &mut ByteSquare) {
         msg.add_(&self.keys[0]);
         for i in 1..self.round {
             msg.sub();
@@ -402,7 +406,7 @@ impl AES {
         msg.add_(&self.keys[self.round]);
     }
 
-    fn decode_block(&self, msg: &mut BitSquare) {
+    fn decode_block(&self, msg: &mut ByteSquare) {
         msg.add_(&self.keys[self.round]);
         msg.shift_row_inv();
         msg.sub_inv();
@@ -423,9 +427,9 @@ mod test {
 
     #[test]
     fn test_mix_col() {
-        let e = BitSquare::from_rows(&[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]);
-        let mut m = BitSquare::from_rows(&MIX_MAT);
-        let mut n = BitSquare::from_rows(&MIX_MAT_INV);
+        let e = ByteSquare::from_rows(&[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]);
+        let mut m = ByteSquare::from_rows(&MIX_MAT);
+        let mut n = ByteSquare::from_rows(&MIX_MAT_INV);
 
         n.mix_col();
         assert_eq!(e, n);
@@ -433,7 +437,7 @@ mod test {
         assert_eq!(e, m);
 
         n.mix_col_inv();
-        assert_eq!(BitSquare::from_rows(&MIX_MAT_INV), n);
+        assert_eq!(ByteSquare::from_rows(&MIX_MAT_INV), n);
     }
 
     #[test]
@@ -449,15 +453,10 @@ mod test {
     #[test]
     fn test_key_manager() {
         // 128 bits
-        let a = AES::new(&[
-            [1, 2, 3, 4],
-            [5, 6, 7, 8],
-            [9, 10, 11, 12],
-            [13, 14, 15, 16],
-        ]);
+        let a = AES::new(&(1..17).into_iter().collect::<Vec<u8>>());
 
         assert_eq!(
-            BitSquare::from_rows(&[
+            ByteSquare::from_rows(&[
                 [0xBC, 0x6F, 0xA1, 0xB1],
                 [0xC4, 0x1A, 0x81, 0xB1],
                 [0x14, 0x5C, 0x62, 0x40],
@@ -467,19 +466,10 @@ mod test {
         );
 
         // 256 bits
-        let a = AES::new(&[
-            [1, 2, 3, 4],
-            [5, 6, 7, 8],
-            [9, 10, 11, 12],
-            [13, 14, 15, 16],
-            [17, 18, 19, 20],
-            [21, 22, 23, 24],
-            [25, 26, 27, 28],
-            [29, 30, 31, 32],
-        ]);
+        let a = AES::new(&(1..33).into_iter().collect::<Vec<u8>>());
 
         assert_eq!(
-            BitSquare::from_rows(&[
+            ByteSquare::from_rows(&[
                 [0xAF, 0x45, 0xAF, 0x95],
                 [0x06, 0xED, 0x70, 0x76],
                 [0x48, 0x58, 0x0C, 0xC8],
@@ -491,16 +481,7 @@ mod test {
 
     #[test]
     fn test_ecb() {
-        let a = AES::new(&[
-            [1, 2, 3, 4],
-            [5, 6, 7, 8],
-            [9, 10, 11, 12],
-            [13, 14, 15, 16],
-            [17, 18, 19, 20],
-            [21, 22, 23, 24],
-            [25, 26, 27, 28],
-            [29, 30, 31, 32],
-        ]);
+        let a = AES::new(&(1..33).into_iter().collect::<Vec<u8>>());
 
         let m = "The Advanced Encryption Standard (AES), also known by its original name Rijndael (Dutch pronunciation: [ˈrɛindaːl]),[3] is a specification for the encryption of electronic data established by the U.S. National Institute of Standards and Technology (NIST) in 2001.";
         //dbg!(m.as_bytes());
@@ -531,21 +512,10 @@ mod test {
     #[test]
     fn test_ige() {
         // see https://mgp25.com/AESIGE/
-        let data = [
-            [0, 1, 2, 3],
-            [4, 5, 6, 7],
-            [8, 9, 10, 11],
-            [12, 13, 14, 15],
-            [16, 17, 18, 19],
-            [20, 21, 22, 23],
-            [24, 25, 26, 27],
-            [28, 29, 30, 31],
-        ];
-
-        let a = AES::new(&data[..4]);
+        let a = AES::new(&(0..16).into_iter().collect::<Vec<u8>>());
         let ivs = (
-            BitSquare::from_cols(&data[..4]),
-            BitSquare::from_cols(&data[4..8]),
+            ByteSquare::from_col(&(0..16).into_iter().collect::<Vec<u8>>()),
+            ByteSquare::from_col(&(16..32).into_iter().collect::<Vec<u8>>()),
         );
         let block = vec![0; 32];
 
@@ -561,17 +531,14 @@ mod test {
             "00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000"
         );
 
-        let a = AES::new(&[
-            [0x54, 0x68, 0x69, 0x73],
-            [0x20, 0x69, 0x73, 0x20],
-            [0x61, 0x6E, 0x20, 0x69],
-            [0x6D, 0x70, 0x6C, 0x65],
-        ]);
+        let a = AES::new(
+            &hex_to_bytes("54686973 20697320 616E2069 6D706C65".replace(' ', "")).unwrap(),
+        );
 
-        let iv1 = BitSquare::from_col(
+        let iv1 = ByteSquare::from_col(
             &hex_to_bytes("6D656E74 6174696F 6E206F66 20494745".replace(' ', "")).unwrap(),
         );
-        let iv2 = BitSquare::from_col(
+        let iv2 = ByteSquare::from_col(
             &hex_to_bytes("206D6F64 6520666F 72204F70 656E5353".replace(' ', "")).unwrap(),
         );
 
@@ -596,14 +563,11 @@ mod test {
 
     #[test]
     fn test_cbc() {
-        let a = AES::new(&[
-            [0x54, 0x68, 0x69, 0x73],
-            [0x20, 0x69, 0x73, 0x20],
-            [0x61, 0x6E, 0x20, 0x69],
-            [0x6D, 0x70, 0x6C, 0x65],
-        ]);
+        let a = AES::new(
+            &hex_to_bytes("54686973 20697320 616E2069 6D706C65".replace(' ', "")).unwrap(),
+        );
 
-        let iv = BitSquare::from_col(
+        let iv = ByteSquare::from_col(
             &hex_to_bytes("6D656E74 6174696F 6E206F66 20494745".replace(' ', "")).unwrap(),
         );
 
