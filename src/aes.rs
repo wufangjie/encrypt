@@ -1,9 +1,13 @@
 //! 用一维数组加速: 不到 10 倍
 
-use crate::aes_const::{EXP_TABLE, LOG_TABLE, MIX_MAT, MIX_MAT_INV, RND_CON, SUB_BOX, SUB_BOX_INV};
+use crate::aes_const::{
+    EXP_TABLE, LOG_TABLE, MIX_MAT_LOG, MIX_MAT_LOG_INV, RND_CON, SUB_BOX,
+    SUB_BOX_INV,
+};
 use std::fmt;
 //use std::ops::{Deref, DerefMut};
 //use std::slice::rotate;
+//use rayon::prelude::*;
 
 const N: usize = 4;
 const N2: usize = N * N;
@@ -44,28 +48,34 @@ impl From<[u8; N2]> for ByteSquare {
     }
 }
 
-impl ByteSquare {
-    fn add(&self, other: &Self) -> Self {
-        let mut new = [0; N2];
-        for (i, new_i) in new.iter_mut().enumerate() {
-            *new_i = self.data[i] ^ other.data[i];
-        }
-        new.into()
-    }
-}
+// impl ByteSquare {
+//     fn add(&self, other: &Self) -> Self {
+//         let mut new = [0; N2];
+//         for (i, new_i) in new.iter_mut().enumerate() {
+//             *new_i = self.data[i] ^ other.data[i];
+//         }
+//         new.into()
+//     }
+// }
 
 impl ByteSquare {
-    /// 密钥加法 (异或操作, 加密解密同)
-    fn add_(&mut self, other: &Self) {
-        for i in 0..N2 {
-            self.data[i] ^= other.data[i];
-        }
-    }
+    // /// 密钥加法 (异或操作, 加密解密同)
+    // fn add_(&mut self, other: &Self) {
+    //     // for i in 0..N2 {
+    //     //     self.data[i] ^= other.data[i];
+    //     // }
+    //     for (data_i, other_i) in self.data.iter_mut().zip(other.data.iter()) {
+    //         *data_i ^= *other_i;
+    //     }
+    // }
 
     /// 密钥加法 (异或操作, 加密解密同)
     fn add_bytes(&mut self, other: &[u8]) {
-        for i in 0..N2 {
-            self.data[i] ^= other[i];
+        // for i in 0..N2 {
+        //     self.data[i] ^= other[i];
+        // }
+        for (data_i, other_i) in self.data.iter_mut().zip(other.iter()) {
+            *data_i ^= *other_i;
         }
     }
 
@@ -74,6 +84,23 @@ impl ByteSquare {
         for i in 0..N2 {
             self.data[i] = SUB_BOX[self.data[i] as usize];
         }
+        // for p in self.data.iter_mut() {
+        //     *p = SUB_BOX[*p as usize];
+        // }
+
+        // self.data
+        //     .par_iter_mut()
+        //     .for_each(|p| *p = SUB_BOX[*p as usize]);
+        // use std::ptr;
+        // unsafe {
+        //     for i in 0..N2 {
+        //         ptr::copy_nonoverlapping(
+        // 	    SUB_BOX.get_unchecked(*self.data.get_unchecked(i) as usize),
+        //             self.data.get_unchecked_mut(i),
+        // 	    1
+        //         );
+        //     }
+        // }
     }
 
     /// 字节代换 (解密)
@@ -81,89 +108,90 @@ impl ByteSquare {
         for i in 0..N2 {
             self.data[i] = SUB_BOX_INV[self.data[i] as usize];
         }
+        // for p in self.data.iter_mut() {
+        //     *p = SUB_BOX_INV[*p as usize];
+        // }
     }
 
     /// 行位移
-    fn shift_row(&mut self) {
-        let mut n0 = 1;
-        let mut n1 = N + 1;
-        let mut n2 = (N << 1) + 1;
-        let mut n3 = N + n2;
+    fn shift_rows(&mut self) {
+        let tmp = self.data[1];
+        self.data[1] = self.data[5];
+        self.data[5] = self.data[9];
+        self.data[9] = self.data[13];
+        self.data[13] = tmp;
 
-        let tmp = self.data[n0];
-        self.data[n0] = self.data[n1];
-        self.data[n1] = self.data[n2];
-        self.data[n2] = self.data[n3];
-        self.data[n3] = tmp;
+        self.data.swap(2, 10);
+        self.data.swap(6, 14);
 
-        self.data.swap(n0 + 1, n2 + 1);
-        self.data.swap(n1 + 1, n3 + 1);
-
-        n0 += 2;
-        n1 += 2;
-        n2 += 2;
-        n3 += 2;
-
-        let tmp = self.data[n3];
-        self.data[n3] = self.data[n2];
-        self.data[n2] = self.data[n1];
-        self.data[n1] = self.data[n0];
-        self.data[n0] = tmp;
+        let tmp = self.data[15];
+        self.data[15] = self.data[11];
+        self.data[11] = self.data[7];
+        self.data[7] = self.data[3];
+        self.data[3] = tmp;
     }
 
     /// 行位移 (解密)
-    fn shift_row_inv(&mut self) {
-        let mut n0 = 1;
-        let mut n1 = N + 1;
-        let mut n2 = (N << 1) + 1;
-        let mut n3 = N + n2;
+    fn shift_rows_inv(&mut self) {
+        let tmp = self.data[13];
+        self.data[13] = self.data[9];
+        self.data[9] = self.data[5];
+        self.data[5] = self.data[1];
+        self.data[1] = tmp;
 
-        let tmp = self.data[n3];
-        self.data[n3] = self.data[n2];
-        self.data[n2] = self.data[n1];
-        self.data[n1] = self.data[n0];
-        self.data[n0] = tmp;
+        self.data.swap(2, 10);
+        self.data.swap(6, 14);
 
-        self.data.swap(n0 + 1, n2 + 1);
-        self.data.swap(n1 + 1, n3 + 1);
-
-        n0 += 2;
-        n1 += 2;
-        n2 += 2;
-        n3 += 2;
-
-        let tmp = self.data[n0];
-        self.data[n0] = self.data[n1];
-        self.data[n1] = self.data[n2];
-        self.data[n2] = self.data[n3];
-        self.data[n3] = tmp;
+        let tmp = self.data[3];
+        self.data[3] = self.data[7];
+        self.data[7] = self.data[11];
+        self.data[11] = self.data[15];
+        self.data[15] = tmp;
     }
 
     /// 列混淆
-    fn mix_col(&mut self) {
-        let mut v = [0u8; N];
-        let mut jn = 0;
-        for _ in 0..N {
-            v[0] = mat_mul(&MIX_MAT[0], &self.data[jn..jn + 4]);
-            v[1] = mat_mul(&MIX_MAT[1], &self.data[jn..jn + 4]);
-            v[2] = mat_mul(&MIX_MAT[2], &self.data[jn..jn + 4]);
-            v[3] = mat_mul(&MIX_MAT[3], &self.data[jn..jn + 4]);
-            self.data[jn..jn + N].copy_from_slice(&v);
-            jn += N;
+    fn mix_cols(&mut self, v: &mut [usize]) {
+        // let mut v = [0u8; N];
+        // for p in self.data.chunks_mut(N) {
+        //     v[0] = mat_mul(&MIX_MAT[0], &p);
+        //     v[1] = mat_mul(&MIX_MAT[1], &p);
+        //     v[2] = mat_mul(&MIX_MAT[2], &p);
+        //     v[3] = mat_mul(&MIX_MAT[3], &p);
+        //     p.copy_from_slice(&v);
+        // }
+        // let mut v = [0usize; N];
+        for p in self.data.chunks_mut(N) {
+            v[0] = LOG_TABLE[p[0] as usize];
+            v[1] = LOG_TABLE[p[1] as usize];
+            v[2] = LOG_TABLE[p[2] as usize];
+            v[3] = LOG_TABLE[p[3] as usize];
+            p[0] = mat_mul_2(&MIX_MAT_LOG[0], v);
+            p[1] = mat_mul_2(&MIX_MAT_LOG[1], v);
+            p[2] = mat_mul_2(&MIX_MAT_LOG[2], v);
+            p[3] = mat_mul_2(&MIX_MAT_LOG[3], v);
         }
     }
 
     /// 列混淆 (解密)
-    fn mix_col_inv(&mut self) {
-        let mut v = [0u8; N];
-        let mut jn = 0;
-        for _ in 0..N {
-            v[0] = mat_mul(&MIX_MAT_INV[0], &self.data[jn..jn + 4]);
-            v[1] = mat_mul(&MIX_MAT_INV[1], &self.data[jn..jn + 4]);
-            v[2] = mat_mul(&MIX_MAT_INV[2], &self.data[jn..jn + 4]);
-            v[3] = mat_mul(&MIX_MAT_INV[3], &self.data[jn..jn + 4]);
-            self.data[jn..jn + N].copy_from_slice(&v);
-            jn += N;
+    fn mix_cols_inv(&mut self, v: &mut [usize]) {
+        // let mut v = [0u8; N];
+        // for p in self.data.chunks_mut(N) {
+        //     v[0] = mat_mul(&MIX_MAT_INV[0], &p);
+        //     v[1] = mat_mul(&MIX_MAT_INV[1], &p);
+        //     v[2] = mat_mul(&MIX_MAT_INV[2], &p);
+        //     v[3] = mat_mul(&MIX_MAT_INV[3], &p);
+        //     p.copy_from_slice(&v);
+        // }
+        //let mut v = [0usize; N];
+        for p in self.data.chunks_mut(N) {
+            v[0] = LOG_TABLE[p[0] as usize];
+            v[1] = LOG_TABLE[p[1] as usize];
+            v[2] = LOG_TABLE[p[2] as usize];
+            v[3] = LOG_TABLE[p[3] as usize];
+            p[0] = mat_mul_2(&MIX_MAT_LOG_INV[0], v);
+            p[1] = mat_mul_2(&MIX_MAT_LOG_INV[1], v);
+            p[2] = mat_mul_2(&MIX_MAT_LOG_INV[2], v);
+            p[3] = mat_mul_2(&MIX_MAT_LOG_INV[3], v);
         }
     }
 }
@@ -194,25 +222,25 @@ impl Default for ByteSquare {
     }
 }
 
-/// polynomial version of GF(2^8) multiplication
-fn galois_mul(mut lhs: u8, mut rhs: u8) -> u8 {
-    let mut res = 0u8;
-    while lhs != 0 {
-        if (lhs & 0x01) != 0 {
-            res ^= rhs;
-        }
-        lhs >>= 1;
+// /// polynomial version of GF(2^8) multiplication
+// fn galois_mul(mut lhs: u8, mut rhs: u8) -> u8 {
+//     let mut res = 0u8;
+//     while lhs != 0 {
+//         if (lhs & 0x01) != 0 {
+//             res ^= rhs;
+//         }
+//         lhs >>= 1;
 
-        if (rhs & 0x80) != 0 {
-            // 0b10000000
-            rhs <<= 1;
-            rhs ^= 0x1B; // 0b00011011
-        } else {
-            rhs <<= 1;
-        }
-    }
-    res
-}
+//         if (rhs & 0x80) != 0 {
+//             // 0b10000000
+//             rhs <<= 1;
+//             rhs ^= 0x1B; // 0b00011011
+//         } else {
+//             rhs <<= 1;
+//         }
+//     }
+//     res
+// }
 
 /// table lookup version of GF(2^8) multiplication
 #[inline]
@@ -220,8 +248,9 @@ fn log_sum_exp(lhs: u8, rhs: u8) -> u8 {
     if lhs == 0 || rhs == 0 {
         0
     } else {
-	let log_sum = LOG_TABLE[lhs as usize] + LOG_TABLE[rhs as usize];
-        EXP_TABLE[log_sum % 0xff] // 0xff loop
+        // loop size: 0xff
+        //EXP_TABLE[(LOG_TABLE[lhs as usize] + LOG_TABLE[rhs as usize]) % 0xff]
+        EXP_TABLE[LOG_TABLE[lhs as usize] + LOG_TABLE[rhs as usize]]
     }
 }
 
@@ -234,10 +263,32 @@ fn mat_mul(row: &[u8], col: &[u8]) -> u8 {
         ^ log_sum_exp(row[3], col[3])
 }
 
+#[inline]
+fn mat_mul_2(row: &[usize], col: &[usize]) -> u8 {
+    // row[0] will not equal to 0
+    (if col[0] == 0 {
+        0
+    } else {
+        EXP_TABLE[row[0] + col[0]]
+    } ^ if col[1] == 0 {
+        0
+    } else {
+        EXP_TABLE[row[1] + col[1]]
+    } ^ if col[2] == 0 {
+        0
+    } else {
+        EXP_TABLE[row[2] + col[2]]
+    } ^ if col[3] == 0 {
+        0
+    } else {
+        EXP_TABLE[row[3] + col[3]]
+    })
+}
+
 #[derive(Debug)]
 pub struct AES {
     round: usize,
-    pub(crate) keys: Vec<ByteSquare>,
+    pub(crate) keys: Vec<[u8; N2]>, //ByteSquare>,
 }
 
 impl AES {
@@ -288,7 +339,7 @@ impl AES {
             key_manager.push(new);
         }
 
-        let mut keys = Vec::<ByteSquare>::with_capacity(1 + round);
+        let mut keys = Vec::<[u8; N2]>::with_capacity(1 + round);
         for r in 0..=round {
             let mut key = [0; N2];
             for j in 0..N {
@@ -296,7 +347,7 @@ impl AES {
                     key[j * N + i] = key_manager[r * N + j][i];
                 }
             }
-            keys.push(ByteSquare { data: key });
+            keys.push(key); // ByteSquare { data: key });
         }
         Self { round, keys }
     }
@@ -304,9 +355,10 @@ impl AES {
     pub fn encode_ecb(&self, msg: &[u8]) -> Vec<u8> {
         // ECB 可以并行计算, CBC 每个 block 开始加密前要先和之前的加密结果 XOR
         let mut res = Vec::with_capacity(msg.len());
+        let mut cache = [0; N2];
         for m in msg.chunks(N2) {
             let mut block = ByteSquare::from_col(m);
-            self.encode_block(&mut block);
+            self.encode_block(&mut block, &mut cache);
             res.extend(block.to_bytes());
         }
         res
@@ -314,9 +366,10 @@ impl AES {
 
     pub fn decode_ecb(&self, msg: &[u8]) -> Vec<u8> {
         let mut res = Vec::with_capacity(msg.len());
+        let mut cache = [0; N2];
         for m in msg.chunks(N2) {
             let mut block = ByteSquare::from_col(m);
-            self.decode_block(&mut block);
+            self.decode_block(&mut block, &mut cache);
             res.extend(block.to_bytes());
         }
         res
@@ -325,25 +378,25 @@ impl AES {
     pub fn encode_cbc(&self, msg: &[u8], mut iv: ByteSquare) -> Vec<u8> {
         // iv means init vector
         let mut res = Vec::with_capacity(msg.len());
+        let mut cache = [0; N2];
         for m in msg.chunks(N2) {
-            let mut block = ByteSquare::from_col(m);
-            block.add_(&iv);
-            self.encode_block(&mut block);
-            iv = block;
-            res.extend(block.to_bytes());
+            iv.add_bytes(m);
+            self.encode_block(&mut iv, &mut cache);
+            res.extend(iv.to_bytes());
         }
         res
     }
 
-    pub fn decode_cbc(&self, msg: &[u8], mut iv: ByteSquare) -> Vec<u8> {
+    pub fn decode_cbc(&self, msg: &[u8], iv: ByteSquare) -> Vec<u8> {
         let mut res = Vec::with_capacity(msg.len());
+        let mut iv_ref = &iv.data[..];
+        let mut cache = [0; N2];
         for m in msg.chunks(N2) {
             let mut block = ByteSquare::from_col(m);
-            let block_bak = block;
-            self.decode_block(&mut block);
-            block.add_(&iv);
-            iv = block_bak;
+            self.decode_block(&mut block, &mut cache);
+            block.add_bytes(iv_ref);
             res.extend(block.to_bytes());
+            iv_ref = m;
         }
         res
     }
@@ -352,13 +405,11 @@ impl AES {
     pub fn encode_ige(&self, msg: &[u8], mut y_prev: ByteSquare, x_prev: ByteSquare) -> Vec<u8> {
         let mut res = Vec::with_capacity(msg.len());
         let mut x_prev_ref = &x_prev.data[..];
+        let mut cache = [0; N2];
         for m in msg.chunks(N2) {
-            //let block = ByteSquare::from_col(m);
-            //y_prev.add_(&block);
-            y_prev.add_bytes(&m);
-            self.encode_block(&mut y_prev);
+            y_prev.add_bytes(m);
+            self.encode_block(&mut y_prev, &mut cache);
             y_prev.add_bytes(x_prev_ref);
-            //x_prev = block;
             x_prev_ref = m;
             res.extend(y_prev.to_bytes());
         }
@@ -367,46 +418,46 @@ impl AES {
 
     /// decode ige mode (for telegram)
     pub fn decode_ige(&self, msg: &[u8], y_prev: ByteSquare, mut x_prev: ByteSquare) -> Vec<u8> {
+        // NOTE: 把 y_prev 和 x_prev 换一下, 就和 encode_ige 完全一样
         let mut res = Vec::with_capacity(msg.len());
         let mut y_prev_ref = &y_prev.data[..];
+        let mut cache = [0; N2];
         for m in msg.chunks(N2) {
-            // let block = ByteSquare::from_col(m);
-            // x_prev.add_(&block);
             x_prev.add_bytes(m);
-            self.decode_block(&mut x_prev);
+            self.decode_block(&mut x_prev, &mut cache);
             x_prev.add_bytes(y_prev_ref);
-            y_prev_ref = m; //block;
+            y_prev_ref = m;
             res.extend(x_prev.to_bytes());
         }
         res
     }
 
-    #[inline]
-    fn encode_block(&self, msg: &mut ByteSquare) {
-        msg.add_(&self.keys[0]);
+    #[inline(always)]
+    fn encode_block(&self, msg: &mut ByteSquare, cache: &mut [usize]) {
+        msg.add_bytes(&self.keys[0]);
         for i in 1..self.round {
             msg.sub();
-            msg.shift_row();
-            msg.mix_col();
-            msg.add_(&self.keys[i])
+            msg.shift_rows();
+            msg.mix_cols(cache);
+            msg.add_bytes(&self.keys[i])
         }
         msg.sub();
-        msg.shift_row();
-        msg.add_(&self.keys[self.round]);
+        msg.shift_rows();
+        msg.add_bytes(&self.keys[self.round]);
     }
 
-    #[inline]
-    fn decode_block(&self, msg: &mut ByteSquare) {
-        msg.add_(&self.keys[self.round]);
-        msg.shift_row_inv();
+    #[inline(always)]
+    fn decode_block(&self, msg: &mut ByteSquare, cache: &mut [usize]) {
+        msg.add_bytes(&self.keys[self.round]);
+        msg.shift_rows_inv();
         msg.sub_inv();
         for i in (1..self.round).into_iter().rev() {
-            msg.add_(&self.keys[i]);
-            msg.mix_col_inv();
-            msg.shift_row_inv();
+            msg.add_bytes(&self.keys[i]);
+            msg.mix_cols_inv(cache);
+            msg.shift_rows_inv();
             msg.sub_inv();
         }
-        msg.add_(&self.keys[0]);
+        msg.add_bytes(&self.keys[0]);
     }
 }
 
@@ -414,22 +465,44 @@ impl AES {
 mod test {
     use super::*;
     use crate::conv::hex_to_bytes;
+    use crate::aes_const::{MIX_MAT, MIX_MAT_INV};
 
     #[test]
-    fn test_mix_col() {
-        let e = ByteSquare::from_rows(&[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]);
+    fn print_log_m() {
+        for row in MIX_MAT {
+            println!(
+                "[0x{:02X}, 0x{:02X}, 0x{:02X}, 0x{:02X}],",
+                LOG_TABLE[row[0] as usize],
+                LOG_TABLE[row[1] as usize],
+                LOG_TABLE[row[2] as usize],
+                LOG_TABLE[row[3] as usize],
+            );
+        }
 
-        let mut m = ByteSquare::from_rows(&MIX_MAT);
-        let mut n = ByteSquare::from_rows(&MIX_MAT_INV);
-
-        n.mix_col();
-        assert_eq!(e, n);
-        m.mix_col_inv();
-        assert_eq!(e, m);
-
-        n.mix_col_inv();
-        assert_eq!(ByteSquare::from_rows(&MIX_MAT_INV), n);
+        println!();
+        for row in MIX_MAT_INV {
+            println!(
+                "[0x{:02X}, 0x{:02X}, 0x{:02X}, 0x{:02X}],",
+                LOG_TABLE[row[0] as usize],
+                LOG_TABLE[row[1] as usize],
+                LOG_TABLE[row[2] as usize],
+                LOG_TABLE[row[3] as usize],
+            );
+        }
     }
+
+    // #[test]
+    // fn test_mix_cols() {
+    //     let e = ByteSquare::from_rows(&[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]);
+    //     let mut m = ByteSquare::from_rows(&MIX_MAT);
+    //     let mut n = ByteSquare::from_rows(&MIX_MAT_INV);
+    //     n.mix_cols();
+    //     assert_eq!(e, n);
+    //     m.mix_cols_inv();
+    //     assert_eq!(e, m);
+    //     n.mix_cols_inv();
+    //     assert_eq!(ByteSquare::from_rows(&MIX_MAT_INV), n);
+    // }
 
     #[test]
     fn test_shift() {
@@ -440,7 +513,7 @@ mod test {
             [13, 14, 15, 16],
         ]);
 
-        e.shift_row();
+        e.shift_rows();
         assert_eq!(
             e,
             ByteSquare::from_rows(&[
@@ -451,7 +524,7 @@ mod test {
             ])
         );
 
-        e.shift_row_inv();
+        e.shift_rows_inv();
         assert_eq!(
             e,
             ByteSquare::from_rows(&[
@@ -463,41 +536,34 @@ mod test {
         );
     }
 
-    #[test]
-    fn test_mul() {
-        let a = 123;
-        let b = 111;
-        let c = 23;
-        assert_eq!(galois_mul(a, b), log_sum_exp(a, b));
-        assert_eq!(galois_mul(a, c), log_sum_exp(c, a));
-        assert_eq!(galois_mul(b, 0), log_sum_exp(0, b));
-    }
+    // #[test]
+    // fn test_mul() {
+    //     let a = 123;
+    //     let b = 111;
+    //     let c = 23;
+    //     assert_eq!(galois_mul(a, b), log_sum_exp(a, b));
+    //     assert_eq!(galois_mul(a, c), log_sum_exp(c, a));
+    //     assert_eq!(galois_mul(b, 0), log_sum_exp(0, b));
+    // }
 
     #[test]
     fn test_key_manager() {
         // 128 bits
         let a = AES::new(&(1..17).into_iter().collect::<Vec<u8>>());
-
         assert_eq!(
-            ByteSquare::from_rows(&[
-                [0xBC, 0x6F, 0xA1, 0xB1],
-                [0xC4, 0x1A, 0x81, 0xB1],
-                [0x14, 0x5C, 0x62, 0x40],
-                [0x42, 0x73, 0x65, 0x87]
-            ]),
+            [
+                0xBC, 0xC4, 0x14, 0x42, 0x6F, 0x1A, 0x5C, 0x73, 0xA1, 0x81, 0x62, 0x65, 0xB1, 0xB1,
+                0x40, 0x87
+            ],
             a.keys[a.round]
         );
-
         // 256 bits
         let a = AES::new(&(1..33).into_iter().collect::<Vec<u8>>());
-
         assert_eq!(
-            ByteSquare::from_rows(&[
-                [0xAF, 0x45, 0xAF, 0x95],
-                [0x06, 0xED, 0x70, 0x76],
-                [0x48, 0x58, 0x0C, 0xC8],
-                [0x99, 0x3A, 0xCF, 0xB2]
-            ]),
+            [
+                0xAF, 0x06, 0x48, 0x99, 0x45, 0xED, 0x58, 0x3A, 0xAF, 0x70, 0x0C, 0xCF, 0x95, 0x76,
+                0xC8, 0xB2
+            ],
             a.keys[a.round]
         );
     }
@@ -614,5 +680,5 @@ mod test {
 
 // TODO:
 // 为什么是 10 轮
-// 为什么最后一轮, 不需要 mix_col
+// 为什么最后一轮, 不需要 mix_cols
 // 为什么第一轮需要 add_ (漂白)
