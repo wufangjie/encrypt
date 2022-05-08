@@ -11,3 +11,12 @@ num-traits = "0.2"
 num-primes = "0.3.0"
 num-integer = "0.1.45"
 openssl = "0.10"
+#rayon = "1.5.2"
+#hex = "0.4"
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "aes_ige_benchmark"
+harness = false
