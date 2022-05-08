@@ -155,7 +155,7 @@ impl ByteSquare {
 
     /// 列混淆 (解密)
     fn mix_col_inv(&mut self) {
-	let mut v = [0u8; N];
+        let mut v = [0u8; N];
         let mut jn = 0;
         for _ in 0..N {
             v[0] = mat_mul(&MIX_MAT_INV[0], &self.data[jn..jn + 4]);
@@ -215,11 +215,12 @@ fn galois_mul(mut lhs: u8, mut rhs: u8) -> u8 {
 }
 
 /// table lookup version of GF(2^8) multiplication
+#[inline]
 fn log_sum_exp(lhs: u8, rhs: u8) -> u8 {
     if lhs == 0 || rhs == 0 {
         0
     } else {
-        let log_sum = LOG_TABLE[lhs as usize] as usize + LOG_TABLE[rhs as usize] as usize;
+	let log_sum = LOG_TABLE[lhs as usize] + LOG_TABLE[rhs as usize];
         EXP_TABLE[log_sum % 0xff] // 0xff loop
     }
 }
