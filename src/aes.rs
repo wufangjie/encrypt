@@ -69,7 +69,6 @@ impl ByteSquare {
         }
     }
 
-
     /// 字节代换
     fn sub(&mut self) {
         for i in 0..N2 {
@@ -142,34 +141,30 @@ impl ByteSquare {
 
     /// 列混淆
     fn mix_col(&mut self) {
-        let mut new = [0; N2];
+        let mut v = [0u8; N];
         let mut jn = 0;
         for _ in 0..N {
-            for i in 0..N {
-                new[jn + i] = log_sum_exp(MIX_MAT[i][0], self.data[jn])
-                    ^ log_sum_exp(MIX_MAT[i][1], self.data[jn + 1])
-                    ^ log_sum_exp(MIX_MAT[i][2], self.data[jn + 2])
-                    ^ log_sum_exp(MIX_MAT[i][3], self.data[jn + 3]);
-            }
+            v[0] = mat_mul(&MIX_MAT[0], &self.data[jn..jn + 4]);
+            v[1] = mat_mul(&MIX_MAT[1], &self.data[jn..jn + 4]);
+            v[2] = mat_mul(&MIX_MAT[2], &self.data[jn..jn + 4]);
+            v[3] = mat_mul(&MIX_MAT[3], &self.data[jn..jn + 4]);
+            self.data[jn..jn + N].copy_from_slice(&v);
             jn += N;
         }
-        self.data = new;
     }
 
     /// 列混淆 (解密)
     fn mix_col_inv(&mut self) {
-        let mut new = [0; N2];
+	let mut v = [0u8; N];
         let mut jn = 0;
         for _ in 0..N {
-            for i in 0..N {
-                new[jn + i] = log_sum_exp(MIX_MAT_INV[i][0], self.data[jn])
-                    ^ log_sum_exp(MIX_MAT_INV[i][1], self.data[jn + 1])
-                    ^ log_sum_exp(MIX_MAT_INV[i][2], self.data[jn + 2])
-                    ^ log_sum_exp(MIX_MAT_INV[i][3], self.data[jn + 3]);
-            }
+            v[0] = mat_mul(&MIX_MAT_INV[0], &self.data[jn..jn + 4]);
+            v[1] = mat_mul(&MIX_MAT_INV[1], &self.data[jn..jn + 4]);
+            v[2] = mat_mul(&MIX_MAT_INV[2], &self.data[jn..jn + 4]);
+            v[3] = mat_mul(&MIX_MAT_INV[3], &self.data[jn..jn + 4]);
+            self.data[jn..jn + N].copy_from_slice(&v);
             jn += N;
         }
-        self.data = new;
     }
 }
 
@@ -227,6 +222,15 @@ fn log_sum_exp(lhs: u8, rhs: u8) -> u8 {
         let log_sum = LOG_TABLE[lhs as usize] as usize + LOG_TABLE[rhs as usize] as usize;
         EXP_TABLE[log_sum % 0xff] // 0xff loop
     }
+}
+
+/// table lookup version of GF(2^8) multiplication
+#[inline]
+fn mat_mul(row: &[u8], col: &[u8]) -> u8 {
+    log_sum_exp(row[0], col[0])
+        ^ log_sum_exp(row[1], col[1])
+        ^ log_sum_exp(row[2], col[2])
+        ^ log_sum_exp(row[3], col[3])
 }
 
 #[derive(Debug)]
@@ -344,43 +348,33 @@ impl AES {
     }
 
     /// decode ige mode (for telegram)
-    pub fn encode_ige(
-        &self,
-        msg: &[u8],
-        mut y_prev: ByteSquare,
-        x_prev: ByteSquare,
-    ) -> Vec<u8> {
+    pub fn encode_ige(&self, msg: &[u8], mut y_prev: ByteSquare, x_prev: ByteSquare) -> Vec<u8> {
         let mut res = Vec::with_capacity(msg.len());
-	let mut x_prev_ref = &x_prev.data[..];
+        let mut x_prev_ref = &x_prev.data[..];
         for m in msg.chunks(N2) {
             //let block = ByteSquare::from_col(m);
             //y_prev.add_(&block);
-	    y_prev.add_bytes(&m);
+            y_prev.add_bytes(&m);
             self.encode_block(&mut y_prev);
             y_prev.add_bytes(x_prev_ref);
             //x_prev = block;
-	    x_prev_ref = m;
+            x_prev_ref = m;
             res.extend(y_prev.to_bytes());
         }
         res
     }
 
     /// decode ige mode (for telegram)
-    pub fn decode_ige(
-        &self,
-        msg: &[u8],
-        y_prev: ByteSquare,
-        mut x_prev: ByteSquare,
-    ) -> Vec<u8> {
+    pub fn decode_ige(&self, msg: &[u8], y_prev: ByteSquare, mut x_prev: ByteSquare) -> Vec<u8> {
         let mut res = Vec::with_capacity(msg.len());
-	let mut y_prev_ref = &y_prev.data[..];
+        let mut y_prev_ref = &y_prev.data[..];
         for m in msg.chunks(N2) {
             // let block = ByteSquare::from_col(m);
             // x_prev.add_(&block);
-	    x_prev.add_bytes(m);
+            x_prev.add_bytes(m);
             self.decode_block(&mut x_prev);
             x_prev.add_bytes(y_prev_ref);
-            y_prev_ref = m;//block;
+            y_prev_ref = m; //block;
             res.extend(x_prev.to_bytes());
         }
         res
