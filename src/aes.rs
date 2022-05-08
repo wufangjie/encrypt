@@ -1,27 +1,187 @@
-//! 只实现 128 bit 密钥的情况
+//! 用一维数组加速: 不到 10 倍
 
 use crate::aes_const::{EXP_TABLE, LOG_TABLE, MIX_MAT, MIX_MAT_INV, RND_CON, SUB_BOX, SUB_BOX_INV};
 use std::fmt;
-use std::ops::{Deref, DerefMut};
+//use std::ops::{Deref, DerefMut};
+//use std::slice::rotate;
 
 const N: usize = 4;
+const N2: usize = N * N;
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct ByteSquare {
-    pub(crate) data: [[u8; N]; N],
+    pub(crate) data: [u8; N2],
+}
+
+impl ByteSquare {
+    pub fn new() -> Self {
+        Self { data: [0; N2] }
+    }
+
+    pub fn from_rows(rows: &[[u8; N]]) -> Self {
+        let mut data = [0; N2];
+        for i in 0..N {
+            for j in 0..N {
+                data[j * N + i] = rows[i][j];
+            }
+        }
+        Self { data }
+    }
+
+    pub fn from_col(col: &[u8]) -> Self {
+        let data = col.try_into().unwrap();
+        Self { data }
+    }
+
+    pub fn to_bytes(self) -> [u8; N2] {
+        self.data
+    }
+}
+
+impl From<[u8; N2]> for ByteSquare {
+    fn from(data: [u8; N2]) -> Self {
+        Self { data }
+    }
+}
+
+impl ByteSquare {
+    fn add(&self, other: &Self) -> Self {
+        let mut new = [0; N2];
+        for (i, new_i) in new.iter_mut().enumerate() {
+            *new_i = self.data[i] ^ other.data[i];
+        }
+        new.into()
+    }
+}
+
+impl ByteSquare {
+    /// 密钥加法 (异或操作, 加密解密同)
+    fn add_(&mut self, other: &Self) {
+        for i in 0..N2 {
+            self.data[i] ^= other.data[i];
+        }
+    }
+
+    /// 密钥加法 (异或操作, 加密解密同)
+    fn add_bytes(&mut self, other: &[u8]) {
+        for i in 0..N2 {
+            self.data[i] ^= other[i];
+        }
+    }
+
+
+    /// 字节代换
+    fn sub(&mut self) {
+        for i in 0..N2 {
+            self.data[i] = SUB_BOX[self.data[i] as usize];
+        }
+    }
+
+    /// 字节代换 (解密)
+    fn sub_inv(&mut self) {
+        for i in 0..N2 {
+            self.data[i] = SUB_BOX_INV[self.data[i] as usize];
+        }
+    }
+
+    /// 行位移
+    fn shift_row(&mut self) {
+        let mut n0 = 1;
+        let mut n1 = N + 1;
+        let mut n2 = (N << 1) + 1;
+        let mut n3 = N + n2;
+
+        let tmp = self.data[n0];
+        self.data[n0] = self.data[n1];
+        self.data[n1] = self.data[n2];
+        self.data[n2] = self.data[n3];
+        self.data[n3] = tmp;
+
+        self.data.swap(n0 + 1, n2 + 1);
+        self.data.swap(n1 + 1, n3 + 1);
+
+        n0 += 2;
+        n1 += 2;
+        n2 += 2;
+        n3 += 2;
+
+        let tmp = self.data[n3];
+        self.data[n3] = self.data[n2];
+        self.data[n2] = self.data[n1];
+        self.data[n1] = self.data[n0];
+        self.data[n0] = tmp;
+    }
+
+    /// 行位移 (解密)
+    fn shift_row_inv(&mut self) {
+        let mut n0 = 1;
+        let mut n1 = N + 1;
+        let mut n2 = (N << 1) + 1;
+        let mut n3 = N + n2;
+
+        let tmp = self.data[n3];
+        self.data[n3] = self.data[n2];
+        self.data[n2] = self.data[n1];
+        self.data[n1] = self.data[n0];
+        self.data[n0] = tmp;
+
+        self.data.swap(n0 + 1, n2 + 1);
+        self.data.swap(n1 + 1, n3 + 1);
+
+        n0 += 2;
+        n1 += 2;
+        n2 += 2;
+        n3 += 2;
+
+        let tmp = self.data[n0];
+        self.data[n0] = self.data[n1];
+        self.data[n1] = self.data[n2];
+        self.data[n2] = self.data[n3];
+        self.data[n3] = tmp;
+    }
+
+    /// 列混淆
+    fn mix_col(&mut self) {
+        let mut new = [0; N2];
+        let mut jn = 0;
+        for _ in 0..N {
+            for i in 0..N {
+                new[jn + i] = log_sum_exp(MIX_MAT[i][0], self.data[jn])
+                    ^ log_sum_exp(MIX_MAT[i][1], self.data[jn + 1])
+                    ^ log_sum_exp(MIX_MAT[i][2], self.data[jn + 2])
+                    ^ log_sum_exp(MIX_MAT[i][3], self.data[jn + 3]);
+            }
+            jn += N;
+        }
+        self.data = new;
+    }
+
+    /// 列混淆 (解密)
+    fn mix_col_inv(&mut self) {
+        let mut new = [0; N2];
+        let mut jn = 0;
+        for _ in 0..N {
+            for i in 0..N {
+                new[jn + i] = log_sum_exp(MIX_MAT_INV[i][0], self.data[jn])
+                    ^ log_sum_exp(MIX_MAT_INV[i][1], self.data[jn + 1])
+                    ^ log_sum_exp(MIX_MAT_INV[i][2], self.data[jn + 2])
+                    ^ log_sum_exp(MIX_MAT_INV[i][3], self.data[jn + 3]);
+            }
+            jn += N;
+        }
+        self.data = new;
+    }
 }
 
 impl fmt::Display for ByteSquare {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "ByteSquare {{")?;
         for i in 0..N {
-            //self.data[i].map(|x|
-            let s = self.data[i]
-                .iter()
-                .map(|x| format!("{:02X}", x))
-                .collect::<Vec<String>>()
-                .join(", ");
-            writeln!(f, "    [{}]{}", s, if i == N - 1 { "" } else { "," })?;
+            write!(f, "[")?;
+            for j in 0..N - 1 {
+                write!(f, "{}, ", self.data[j * N + i])?;
+            }
+            writeln!(f, "{}],", self.data[(N - 1) * N + i])?;
         }
         write!(f, "}}")
     }
@@ -36,156 +196,6 @@ impl fmt::Debug for ByteSquare {
 impl Default for ByteSquare {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl Deref for ByteSquare {
-    type Target = [[u8; N]; N];
-
-    fn deref(&self) -> &Self::Target {
-        &self.data
-    }
-}
-
-impl DerefMut for ByteSquare {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.data
-    }
-}
-
-impl ByteSquare {
-    pub fn new() -> Self {
-        Self { data: [[0; N]; N] }
-    }
-
-    // fn from_row(row: &[u8]) -> Self {
-    //     // TODO: 处理长度不够的情况
-    //     let mut data = [[0; N]; N];
-    //     for (i, v) in row.iter().take(N * N).enumerate() {
-    //         data[i / N][i % N] = *v;
-    //     }
-    //     Self { data }
-    // }
-
-    pub fn from_col(col: &[u8]) -> Self {
-        let mut data = [[0; N]; N];
-        for (i, v) in col.iter().take(N * N).enumerate() {
-            data[i % N][i / N] = *v;
-        }
-        Self { data }
-    }
-
-    pub fn from_rows(mat: &[[u8; N]]) -> Self {
-        let mut data = [[0; N]; N];
-        for (i, data_i) in data.iter_mut().enumerate() {
-            *data_i = mat[i];
-        }
-        Self { data }
-    }
-
-    pub fn from_cols(mat: &[[u8; N]]) -> Self {
-        let mut data = [[0; N]; N];
-        for (i, data_i) in data.iter_mut().enumerate() {
-            for (j, data_i_j) in data_i.iter_mut().enumerate() {
-                *data_i_j = mat[j][i];
-            }
-        }
-        Self { data }
-    }
-
-    pub fn to_bytes(self) -> Vec<u8> {
-        let mut res = Vec::with_capacity(N * N);
-        for j in 0..N {
-            for i in 0..N {
-                res.push(self[i][j]);
-            }
-        }
-        res
-    }
-}
-
-impl ByteSquare {
-    fn add(&self, other: &Self) -> Self {
-        let mut new = Self::new();
-        for i in 0..N {
-            for j in 0..N {
-                new[i][j] = self[i][j] ^ other[i][j];
-            }
-        }
-        new
-    }
-
-    /// 密钥加法 (异或操作, 加密解密同)
-    fn add_(&mut self, other: &Self) {
-        for i in 0..N {
-            for j in 0..N {
-                self[i][j] ^= other[i][j];
-            }
-        }
-    }
-
-    /// 字节代换
-    fn sub(&mut self) {
-        for i in 0..N {
-            for j in 0..N {
-                self[i][j] = SUB_BOX[self[i][j] as usize];
-            }
-        }
-    }
-
-    /// 字节代换 (解密)
-    fn sub_inv(&mut self) {
-        for i in 0..N {
-            for j in 0..N {
-                self[i][j] = SUB_BOX_INV[self[i][j] as usize];
-            }
-        }
-    }
-
-    /// 行位移
-    fn shift_row(&mut self) {
-        for (i, row) in self.data.iter_mut().enumerate().skip(1) {
-            row.rotate_left(i);
-        }
-    }
-
-    /// 行位移 (解密)
-    fn shift_row_inv(&mut self) {
-        for (i, row) in self.data.iter_mut().enumerate().skip(1) {
-            row.rotate_left(N - i);
-        }
-    }
-
-    /// 列混淆
-    fn mix_col(&mut self) {
-        let mut new: [[u8; N]; N] = Default::default();
-        for i in 0..N {
-            for j in 0..N {
-                let mut res = 0u8;
-                for k in 0..N {
-                    //res ^= galois_mul(MIX_MAT[i][k], self[k][j]);
-                    res ^= log_sum_exp(MIX_MAT[i][k], self[k][j]);
-                }
-                new[i][j] = res;
-            }
-        }
-        self.data = new;
-    }
-
-    /// 列混淆 (解密)
-    fn mix_col_inv(&mut self) {
-        let mut new: [[u8; N]; N] = Default::default();
-        for i in 0..N {
-            for j in 0..N {
-                let mut res = 0u8;
-                for k in 0..N {
-                    //res ^= galois_mul(MIX_MAT_INV[i][k], self[k][j]);
-                    res ^= log_sum_exp(MIX_MAT_INV[i][k], self[k][j]);
-                }
-                new[i][j] = res;
-            }
-        }
-        self.data = new;
     }
 }
 
@@ -226,32 +236,6 @@ pub struct AES {
 }
 
 impl AES {
-    /// deprecated
-    pub fn new2(key: ByteSquare) -> Self {
-        let round = 10;
-        let mut keys = Vec::<ByteSquare>::with_capacity(11);
-        keys.push(key);
-
-        for r in 0..round {
-            let mut new = ByteSquare::new();
-
-            for i in 0..N {
-                new[i][0] = SUB_BOX[keys[r][(i + 1) % N][N - 1] as usize] ^ keys[r][i][0];
-            }
-            new[0][0] ^= RND_CON[r]; //  + 1
-
-            for j in 1..N {
-                for i in 0..N {
-                    new[i][j] = new[i][j - 1] ^ keys[r][i][j];
-                }
-            }
-            keys.push(new);
-        }
-
-        dbg!(&keys[1]);
-        Self { round, keys }
-    }
-
     /// row style key
     pub fn new(key: &[u8]) -> Self {
         //fn gen(&self) -> Vec<ByteSquare> {
@@ -268,8 +252,8 @@ impl AES {
         let mut key_manager = vec![];
         for row in key.chunks(N) {
             let mut new = [0; N];
-            for i in 0..N {
-                new[i] = row[i];
+            for (i, new_i) in new.iter_mut().enumerate() {
+                *new_i = row[i];
             }
             key_manager.push(new);
         }
@@ -301,13 +285,13 @@ impl AES {
 
         let mut keys = Vec::<ByteSquare>::with_capacity(1 + round);
         for r in 0..=round {
-            let mut key = [[0; N]; N];
+            let mut key = [0; N2];
             for j in 0..N {
-                for (i, key_i) in key.iter_mut().enumerate() {
-                    key_i[j] = key_manager[r * N + j][i];
+                for i in 0..N {
+                    key[j * N + i] = key_manager[r * N + j][i];
                 }
             }
-            keys.push(ByteSquare::from_rows(&key));
+            keys.push(ByteSquare { data: key });
         }
         Self { round, keys }
     }
@@ -315,7 +299,7 @@ impl AES {
     pub fn encode_ecb(&self, msg: &[u8]) -> Vec<u8> {
         // ECB 可以并行计算, CBC 每个 block 开始加密前要先和之前的加密结果 XOR
         let mut res = Vec::with_capacity(msg.len());
-        for m in msg.chunks(16) {
+        for m in msg.chunks(N2) {
             let mut block = ByteSquare::from_col(m);
             self.encode_block(&mut block);
             res.extend(block.to_bytes());
@@ -325,7 +309,7 @@ impl AES {
 
     pub fn decode_ecb(&self, msg: &[u8]) -> Vec<u8> {
         let mut res = Vec::with_capacity(msg.len());
-        for m in msg.chunks(16) {
+        for m in msg.chunks(N2) {
             let mut block = ByteSquare::from_col(m);
             self.decode_block(&mut block);
             res.extend(block.to_bytes());
@@ -336,7 +320,7 @@ impl AES {
     pub fn encode_cbc(&self, msg: &[u8], mut iv: ByteSquare) -> Vec<u8> {
         // iv means init vector
         let mut res = Vec::with_capacity(msg.len());
-        for m in msg.chunks(16) {
+        for m in msg.chunks(N2) {
             let mut block = ByteSquare::from_col(m);
             block.add_(&iv);
             self.encode_block(&mut block);
@@ -348,7 +332,7 @@ impl AES {
 
     pub fn decode_cbc(&self, msg: &[u8], mut iv: ByteSquare) -> Vec<u8> {
         let mut res = Vec::with_capacity(msg.len());
-        for m in msg.chunks(16) {
+        for m in msg.chunks(N2) {
             let mut block = ByteSquare::from_col(m);
             let block_bak = block;
             self.decode_block(&mut block);
@@ -360,39 +344,49 @@ impl AES {
     }
 
     /// decode ige mode (for telegram)
-    pub fn encode_ige(&self, msg: &[u8], ivs: (ByteSquare, ByteSquare)) -> Vec<u8> {
-        let (mut y_prev, mut x_prev) = ivs;
+    pub fn encode_ige(
+        &self,
+        msg: &[u8],
+        mut y_prev: ByteSquare,
+        x_prev: ByteSquare,
+    ) -> Vec<u8> {
         let mut res = Vec::with_capacity(msg.len());
-        for m in msg.chunks(16) {
-            let mut block = ByteSquare::from_col(m);
-            let block_bak = block;
-            block.add_(&y_prev);
-            self.encode_block(&mut block);
-            block.add_(&x_prev);
-            y_prev = block;
-            x_prev = block_bak;
-            res.extend(block.to_bytes());
+	let mut x_prev_ref = &x_prev.data[..];
+        for m in msg.chunks(N2) {
+            //let block = ByteSquare::from_col(m);
+            //y_prev.add_(&block);
+	    y_prev.add_bytes(&m);
+            self.encode_block(&mut y_prev);
+            y_prev.add_bytes(x_prev_ref);
+            //x_prev = block;
+	    x_prev_ref = m;
+            res.extend(y_prev.to_bytes());
         }
         res
     }
 
     /// decode ige mode (for telegram)
-    pub fn decode_ige(&self, msg: &[u8], ivs: (ByteSquare, ByteSquare)) -> Vec<u8> {
-        let (mut y_prev, mut x_prev) = ivs;
+    pub fn decode_ige(
+        &self,
+        msg: &[u8],
+        y_prev: ByteSquare,
+        mut x_prev: ByteSquare,
+    ) -> Vec<u8> {
         let mut res = Vec::with_capacity(msg.len());
-        for m in msg.chunks(16) {
-            let mut block = ByteSquare::from_col(m);
-            let block_bak = block;
-            block.add_(&x_prev);
-            self.decode_block(&mut block);
-            block.add_(&y_prev);
-            x_prev = block;
-            y_prev = block_bak;
-            res.extend(block.to_bytes());
+	let mut y_prev_ref = &y_prev.data[..];
+        for m in msg.chunks(N2) {
+            // let block = ByteSquare::from_col(m);
+            // x_prev.add_(&block);
+	    x_prev.add_bytes(m);
+            self.decode_block(&mut x_prev);
+            x_prev.add_bytes(y_prev_ref);
+            y_prev_ref = m;//block;
+            res.extend(x_prev.to_bytes());
         }
         res
     }
 
+    #[inline]
     fn encode_block(&self, msg: &mut ByteSquare) {
         msg.add_(&self.keys[0]);
         for i in 1..self.round {
@@ -406,6 +400,7 @@ impl AES {
         msg.add_(&self.keys[self.round]);
     }
 
+    #[inline]
     fn decode_block(&self, msg: &mut ByteSquare) {
         msg.add_(&self.keys[self.round]);
         msg.shift_row_inv();
@@ -428,6 +423,7 @@ mod test {
     #[test]
     fn test_mix_col() {
         let e = ByteSquare::from_rows(&[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]);
+
         let mut m = ByteSquare::from_rows(&MIX_MAT);
         let mut n = ByteSquare::from_rows(&MIX_MAT_INV);
 
@@ -438,6 +434,38 @@ mod test {
 
         n.mix_col_inv();
         assert_eq!(ByteSquare::from_rows(&MIX_MAT_INV), n);
+    }
+
+    #[test]
+    fn test_shift() {
+        let mut e = ByteSquare::from_rows(&[
+            [1, 2, 3, 4],
+            [5, 6, 7, 8],
+            [9, 10, 11, 12],
+            [13, 14, 15, 16],
+        ]);
+
+        e.shift_row();
+        assert_eq!(
+            e,
+            ByteSquare::from_rows(&[
+                [1, 2, 3, 4],
+                [6, 7, 8, 5],
+                [11, 12, 9, 10],
+                [16, 13, 14, 15]
+            ])
+        );
+
+        e.shift_row_inv();
+        assert_eq!(
+            e,
+            ByteSquare::from_rows(&[
+                [1, 2, 3, 4],
+                [5, 6, 7, 8],
+                [9, 10, 11, 12],
+                [13, 14, 15, 16]
+            ])
+        );
     }
 
     #[test]
@@ -484,10 +512,15 @@ mod test {
         let a = AES::new(&(1..33).into_iter().collect::<Vec<u8>>());
 
         let m = "The Advanced Encryption Standard (AES), also known by its original name Rijndael (Dutch pronunciation: [ˈrɛindaːl]),[3] is a specification for the encryption of electronic data established by the U.S. National Institute of Standards and Technology (NIST) in 2001.";
-        //dbg!(m.as_bytes());
+        let mut ms = m.to_string();
 
         let n = m.len();
-        let c = a.encode_ecb(m.as_bytes());
+        let mut i = n;
+        while i % N2 != 0 {
+            ms.push('\0');
+            i += 1;
+        }
+        let c = a.encode_ecb(ms.as_bytes());
 
         assert_eq!(
             &c[256..],
@@ -513,19 +546,17 @@ mod test {
     fn test_ige() {
         // see https://mgp25.com/AESIGE/
         let a = AES::new(&(0..16).into_iter().collect::<Vec<u8>>());
-        let ivs = (
-            ByteSquare::from_col(&(0..16).into_iter().collect::<Vec<u8>>()),
-            ByteSquare::from_col(&(16..32).into_iter().collect::<Vec<u8>>()),
-        );
+        let iv1 = ByteSquare::from_col(&(0..16).into_iter().collect::<Vec<u8>>());
+        let iv2 = ByteSquare::from_col(&(16..32).into_iter().collect::<Vec<u8>>());
         let block = vec![0; 32];
 
-        let cipher = a.encode_ige(&block, ivs);
+        let cipher = a.encode_ige(&block, iv1, iv2);
         assert_eq!(
             format_hex4(&cipher),
             "1A8519A6 557BE652 E9DA8E43 DA4EF445 3CF456B4 CA488AA3 83C79C98 B34797CB"
         );
 
-        let origin = a.decode_ige(&cipher, ivs);
+        let origin = a.decode_ige(&cipher, iv1, iv2);
         assert_eq!(
             format_hex4(&origin),
             "00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000"
@@ -548,13 +579,13 @@ mod test {
         )
         .unwrap();
 
-        let cipher = a.encode_ige(&block, (iv1, iv2));
+        let cipher = a.encode_ige(&block, iv1, iv2);
         assert_eq!(
             format_hex4(&cipher),
             "4C2E204C 65742773 20686F70 65204265 6E20676F 74206974 20726967 6874210A"
         );
 
-        let origin = a.decode_ige(&cipher, (iv1, iv2));
+        let origin = a.decode_ige(&cipher, iv1, iv2);
         assert_eq!(
             format_hex4(&origin),
             "99706487 A1CDE613 BC6DE0B6 F24B1C7A A448C8B9 C3403E34 67A8CAD8 9340F53B"
