@@ -531,6 +531,17 @@ https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm
 * TODO AES
 详见代码
 
+** 改进混淆矩阵
+前面在 GF(2^8) 里讲了用 log 和 exp 来加速的技巧, 在 aes 里可以更进一步, 把混淆矩阵提前求好 log, 然后用同一列 x 求四次 log, 求和, 求 exp, 再异或
+
+** 空间换时间
++ exp 索引, 都是两个数相加之后求, 把长度加长到 512, 就可以避免求模
++ 改变 log_table 的类型为 usize, 可以在索引时避免类型转换
++ #[inline(always)] encode_block 和 decode_block 能省时 1/3, (不用always, 函数多的时候 rust 会选择不优化)
+
+** iv (init vector) 的巧用
+对 iv 进行变换而不是 msg_block, 可以减少不必要的 clone
+
 * TODO 25519
 ** (加密) curve25519
 ** (交换) x25519
