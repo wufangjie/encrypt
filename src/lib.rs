@@ -9,3 +9,5 @@ pub use ecc::Ec;
 pub mod conv;
 
 pub mod error;
+
+pub mod base64;
