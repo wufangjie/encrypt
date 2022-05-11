@@ -1,3 +1,6 @@
+//! deprecated
+//! only for learning purpose
+
 use std::fmt;
 
 type T = i64;
