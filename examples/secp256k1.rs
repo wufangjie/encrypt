@@ -1,42 +1,41 @@
 extern crate encrypt;
-use encrypt::conv::hex_to_bytes;
-use encrypt::ecc_bigint::{Point, ECC};
-use num_bigint::BigUint;
-use num_traits::{One, Zero};
+use encrypt::ecc::{Ec, Point, i_from_hex4, u_from_hex4};
+use num_bigint::{BigInt, ToBigInt}; // BigUint, Sign,
+use num_primes::Generator;
+//use num_integer::{ExtendedGcd}; // It's slow
+use num_traits::{Zero}; // One,
 
-fn from_format_hex4(s: &str) -> BigUint {
-    BigUint::from_bytes_be(&hex_to_bytes(s.replace(' ', "")).unwrap())
-}
-
-/// secp256k1 is the bitcoin
 fn main() {
-    // https://en.bitcoin.it/wiki/Secp256k1
+    let timer = std::time::Instant::now();
     let p_str = "FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFE FFFFFC2F";
     let x_str = "79BE667E F9DCBBAC 55A06295 CE870B07 029BFCDB 2DCE28D9 59F2815B 16F81798";
     let y_str = "483ADA77 26A3C465 5DA4FBFC 0E1108A8 FD17B448 A6855419 9C47D08F FB10D4B8";
-    let n_str = "FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFE BAAEDCE6 AF48A03B BFD25E8C D0364141"; // order
-
-    let p = from_format_hex4(p_str);
-    let ec = ECC::new(p, BigUint::zero(), BigUint::from(7u8));
-
-    let g = Point::new(from_format_hex4(x_str), from_format_hex4(y_str));
-    assert!(ec.contains(&g));
-
-    let n = from_format_hex4(n_str);
+    let n_str = "FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFE BAAEDCE6 AF48A03B BFD25E8C D0364141"; // the order
+    let g = Point::new(i_from_hex4(x_str), i_from_hex4(y_str));
+    let p = u_from_hex4(p_str);
+    let n = u_from_hex4(n_str);
+    let ec = Ec::new(p, BigInt::zero(), BigInt::from(7u8), n, g);
+    println!("gen checked secp256k1 () cost: {:?}", timer.elapsed());
 
     let timer = std::time::Instant::now();
-    assert!(ec.mul(&n, &g).is_zero()); // 188ms on macbook air m1
-    println!("cost {:?}", timer.elapsed());
+    let ec = Ec::secp256k1();
+    println!("gen unchecked secp256k1 cost: {:?}", timer.elapsed());
 
-    let pri = from_format_hex4("1E99423A4ED27608A15A2616A2B0E9E52CED330AC530EDCC32C8FFC6A526AEDD");
-    let pub_x =
-        from_format_hex4("F028892BAD7ED57D2FB57BF33081D5CFCF6F9ED3D3D7F159C2E2FFF579DC341A");
-    let pub_y =
-        from_format_hex4("07CF33DA18BD734C600B96A72BBC4749D5141C90EC8AC328AE52DDFE2E505BDB");
+
+    let (pri_key, pub_key) = ec.gen_key();
+    let hash_m = Generator::new_uint(256).to_bigint().unwrap();
 
     let timer = std::time::Instant::now();
-    let key = ec.mul(&pri, &g); // 133ms on macbook air m1
-    println!("cost {:?}", timer.elapsed());
+    let (s, pr) = ec.sig_gen(&hash_m, &pri_key);
+    println!("sig_gen() cost: {:?}", timer.elapsed());
 
-    assert_eq!(key, Point::new(pub_x, pub_y));
+    let timer = std::time::Instant::now();
+    dbg!(ec.sig_ver(&hash_m, &pub_key, s, pr));
+    println!("sig_ver() cost: {:?}", timer.elapsed());
+
+    let timer = std::time::Instant::now();
+    let (pri_key1, pub_key1) = ec.gen_key();
+    let (pri_key2, pub_key2) = ec.gen_key();
+    assert_eq!(ec.mul(&pri_key1, &pub_key2), ec.mul(&pri_key2, &pub_key1));
+    println!("twice ecdh cost: {:?}", timer.elapsed());
 }
