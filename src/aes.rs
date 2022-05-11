@@ -1,8 +1,7 @@
 //! 用一维数组加速: 不到 10 倍
 
 use crate::aes_const::{
-    EXP_TABLE, LOG_TABLE, MIX_MAT_LOG, MIX_MAT_LOG_INV, RND_CON, SUB_BOX,
-    SUB_BOX_INV,
+    EXP_TABLE, LOG_TABLE, MIX_MAT_LOG, MIX_MAT_LOG_INV, RND_CON, SUB_BOX, SUB_BOX_INV,
 };
 use std::fmt;
 //use std::ops::{Deref, DerefMut};
@@ -465,31 +464,31 @@ impl AES {
 mod test {
     use super::*;
     use crate::conv::hex_to_bytes;
-    use crate::aes_const::{MIX_MAT, MIX_MAT_INV};
 
-    #[test]
-    fn print_log_m() {
-        for row in MIX_MAT {
-            println!(
-                "[0x{:02X}, 0x{:02X}, 0x{:02X}, 0x{:02X}],",
-                LOG_TABLE[row[0] as usize],
-                LOG_TABLE[row[1] as usize],
-                LOG_TABLE[row[2] as usize],
-                LOG_TABLE[row[3] as usize],
-            );
-        }
+    // #[test]
+    // fn print_log_m() {
+    // 	use crate::aes_const::{MIX_MAT, MIX_MAT_INV};
+    // 	for row in MIX_MAT {
+    //         println!(
+    //             "[0x{:02X}, 0x{:02X}, 0x{:02X}, 0x{:02X}],",
+    //             LOG_TABLE[row[0] as usize],
+    //             LOG_TABLE[row[1] as usize],
+    //             LOG_TABLE[row[2] as usize],
+    //             LOG_TABLE[row[3] as usize],
+    //         );
+    //     }
 
-        println!();
-        for row in MIX_MAT_INV {
-            println!(
-                "[0x{:02X}, 0x{:02X}, 0x{:02X}, 0x{:02X}],",
-                LOG_TABLE[row[0] as usize],
-                LOG_TABLE[row[1] as usize],
-                LOG_TABLE[row[2] as usize],
-                LOG_TABLE[row[3] as usize],
-            );
-        }
-    }
+    //     println!();
+    //     for row in MIX_MAT_INV {
+    //         println!(
+    //             "[0x{:02X}, 0x{:02X}, 0x{:02X}, 0x{:02X}],",
+    //             LOG_TABLE[row[0] as usize],
+    //             LOG_TABLE[row[1] as usize],
+    //             LOG_TABLE[row[2] as usize],
+    //             LOG_TABLE[row[3] as usize],
+    //         );
+    //     }
+    // }
 
     // #[test]
     // fn test_mix_cols() {
