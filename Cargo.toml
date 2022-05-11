@@ -18,5 +18,12 @@ openssl = "0.10"
 criterion = "0.3"
 
 [[bench]]
-name = "aes_ige_benchmark"
+#name = "aes_ige_benchmark"
+name = "bigint_benchmark"
 harness = false
+
+# [profile.release]
+# strip = true  # Automatically strip symbols from the binary.
+# lto = "fat"
+# codegen-units = 1
+# panic = "abort"
