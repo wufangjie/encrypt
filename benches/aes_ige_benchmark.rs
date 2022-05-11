@@ -1,5 +1,5 @@
 extern crate encrypt;
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 
 use encrypt::aes::{ByteSquare, AES};
 use encrypt::conv::hex_to_bytes;

@@ -1,9 +1,9 @@
 extern crate encrypt;
-use encrypt::ecc::{Ec, Point, i_from_hex4, u_from_hex4};
+use encrypt::ecc::{i_from_hex4, u_from_hex4, Ec, Point};
 use num_bigint::{BigInt, ToBigInt}; // BigUint, Sign,
 use num_primes::Generator;
 //use num_integer::{ExtendedGcd}; // It's slow
-use num_traits::{Zero}; // One,
+use num_traits::Zero; // One,
 
 fn main() {
     let timer = std::time::Instant::now();
@@ -20,7 +20,6 @@ fn main() {
     let timer = std::time::Instant::now();
     let ec = Ec::secp256k1();
     println!("gen unchecked secp256k1 cost: {:?}", timer.elapsed());
-
 
     let (pri_key, pub_key) = ec.gen_key();
     let hash_m = Generator::new_uint(256).to_bigint().unwrap();

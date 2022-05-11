@@ -1,5 +1,5 @@
 extern crate encrypt;
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use encrypt::conv::hex_to_bytes;
 use num_bigint::{BigInt, Sign};
 use num_traits::{One, Zero};
