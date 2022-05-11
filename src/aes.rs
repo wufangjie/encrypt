@@ -39,6 +39,10 @@ impl ByteSquare {
     pub fn to_bytes(self) -> [u8; N2] {
         self.data
     }
+
+    pub fn copy_from_col(&mut self, col: &[u8]) {
+        self.data.copy_from_slice(col)
+    }
 }
 
 impl From<[u8; N2]> for ByteSquare {
@@ -355,8 +359,9 @@ impl AES {
         // ECB 可以并行计算, CBC 每个 block 开始加密前要先和之前的加密结果 XOR
         let mut res = Vec::with_capacity(msg.len());
         let mut cache = [0; N2];
+        let mut block = ByteSquare::new();
         for m in msg.chunks(N2) {
-            let mut block = ByteSquare::from_col(m);
+            block.copy_from_col(m);
             self.encode_block(&mut block, &mut cache);
             res.extend(block.to_bytes());
         }
@@ -366,8 +371,9 @@ impl AES {
     pub fn decode_ecb(&self, msg: &[u8]) -> Vec<u8> {
         let mut res = Vec::with_capacity(msg.len());
         let mut cache = [0; N2];
+        let mut block = ByteSquare::new();
         for m in msg.chunks(N2) {
-            let mut block = ByteSquare::from_col(m);
+            block.copy_from_col(m);
             self.decode_block(&mut block, &mut cache);
             res.extend(block.to_bytes());
         }
@@ -390,8 +396,9 @@ impl AES {
         let mut res = Vec::with_capacity(msg.len());
         let mut iv_ref = &iv.data[..];
         let mut cache = [0; N2];
+        let mut block = ByteSquare::new();
         for m in msg.chunks(N2) {
-            let mut block = ByteSquare::from_col(m);
+            block.copy_from_col(m);
             self.decode_block(&mut block, &mut cache);
             block.add_bytes(iv_ref);
             res.extend(block.to_bytes());
