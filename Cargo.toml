@@ -10,16 +10,18 @@ num-bigint = "0.2.6" # 0.4, keep same version with num-primes = "0.3.0"
 num-traits = "0.2"
 num-primes = "0.3.0"
 num-integer = "0.1.45"
-openssl = "0.10"
 #rayon = "1.5.2"
 #hex = "0.4"
 
 [dev-dependencies]
 criterion = "0.3"
+openssl = "0.10"
+base64 = "0.13.0"
 
 [[bench]]
 #name = "aes_ige_benchmark"
-name = "bigint_benchmark"
+#name = "bigint_benchmark"
+name = "base64_benchmark"
 harness = false
 
 # [profile.release]
