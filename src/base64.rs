@@ -5,103 +5,78 @@ const BASE64_CHARS: [u8; 64] = *b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrst
 pub struct Base64;
 
 impl Base64 {
-    pub fn encode(lst: &[u8]) -> Vec<u8> {
-        // let mut ret = vec![];
-        // for slc in lst.chunks(3) {
-        //     ret.extend(encode_base64_3bytes(slc));
-        // }
-        // ret;
-        lst.chunks(3).flat_map(Self::encode_3bytes).collect()
+    pub fn encode(msg: &[u8]) -> Vec<u8> {
+        let n = msg.len();
+        let n_block = n / 3;
+        let m = match n % 3 {
+            0 => n_block << 2,
+            _ => (n_block + 1) << 2,
+        };
+        let mut res = vec![0; m];
+
+        for i in 0..n_block {
+            Self::encode_3bytes(&msg[i * 3..], &mut res[i << 2..]);
+        }
+
+        match n % 3 {
+            0 => (),
+            x => {
+                let mut last = [0; 3];
+                last[0..x].copy_from_slice(&msg[n - x..]);
+                Self::encode_3bytes(&last, &mut res[n_block << 2..]);
+                for i in x..3 {
+                    res[m - 3 + i] = b'=';
+                }
+            }
+        }
+        res
     }
 
-    pub fn decode(lst: &[u8]) -> Result<Vec<u8>, DecodeBase64Error> {
-        let n = lst.len();
+    #[inline(always)]
+    fn encode_3bytes(msg: &[u8], res: &mut [u8]) {
+        let i3 = (msg[0] as usize) << 16 | (msg[1] as usize) << 8 | msg[2] as usize;
+        res[0] = BASE64_CHARS[(i3 >> 18) & 0x3f];
+        res[1] = BASE64_CHARS[(i3 >> 12) & 0x3f];
+        res[2] = BASE64_CHARS[(i3 >> 6) & 0x3f];
+        res[3] = BASE64_CHARS[i3 & 0x3f];
+    }
+
+    pub fn decode(msg: &[u8]) -> Result<Vec<u8>, DecodeBase64Error> {
+        let n = msg.len();
         if n % 4 != 0 || n == 0 {
             return Err(DecodeBase64Error::InvalidLength(n));
         }
 
-        let count_equal = if let b'=' = lst[n - 2] {
+        let count_equal = if let b'=' = msg[n - 2] {
             2
-        } else if let b'=' = lst[n - 1] {
+        } else if let b'=' = msg[n - 1] {
             1
         } else {
             0
         };
 
-        let mut ret = Vec::with_capacity(n / 4 * 3);
-        for slc in lst.chunks(4) {
-            ret.extend(Self::decode_4bytes(slc)?);
+        let mut res = vec![0xff; n / 4 * 3]; //Vec::with_capacity(n / 4 * 3);
+        for (i, slc) in msg.chunks(4).enumerate() {
+            Self::decode_4bytes(slc, &mut res[i * 3..], i)?;
         }
         for _ in 0..count_equal {
-            ret.pop();
+            res.pop();
         }
-        Ok(ret)
+        Ok(res)
     }
 
-    fn encode_3bytes(lst: &[u8]) -> Vec<u8> {
-        let i3: usize = lst
-            .iter()
-            .enumerate()
-            .map(|(i, v)| (*v as usize) << (8 * (2 - i)))
-            .sum();
+    #[inline(always)]
+    fn decode_4bytes(msg: &[u8], res: &mut [u8], i: usize) -> Result<(), DecodeBase64Error> {
+        let idx = i << 2;
+        let i3 = Self::decode_char(msg[0], idx)? << 18
+            | Self::decode_char(msg[1], idx + 1)? << 12
+            | Self::decode_char(msg[2], idx + 2)? << 6
+            | Self::decode_char(msg[3], idx + 3)?;
 
-        let mut ret = vec![
-            BASE64_CHARS[(i3 >> 18) & 0x3f],
-            BASE64_CHARS[(i3 >> 12) & 0x3f],
-            BASE64_CHARS[(i3 >> 6) & 0x3f],
-            BASE64_CHARS[i3 & 0x3f],
-        ];
-
-        // let mut ret = [
-        //     // (i3 & (0b111111 << 18)) >> 18,
-        //     // (i3 & (0b111111 << 12)) >> 12,
-        //     // (i3 & (0b111111 << 6)) >> 6,
-        //     // i3 & 0b111111,
-        // ]
-        // .into_iter()
-        // .map(|idx| BASE64_CHARS[idx])
-        // .collect::<Vec<u8>>();
-
-        for i in lst.len()..3 {
-            ret[i + 1] = b'=';
-        }
-
-        // match lst.len() {
-        //     2 => ret[3] = b'=',
-        //     1 => {
-        //         ret[2] = b'=';
-        //         ret[3] = b'=';
-        //     }
-        //     _ => (),
-        // }
-        ret
-    }
-
-    fn decode_4bytes(lst: &[u8]) -> Result<Vec<u8>, DecodeBase64Error> {
-        // let i3: usize = lst
-        //     .iter()
-        //     .enumerate()
-        //     .map(|(i, v)| decode_base64_char(*v, i).unwrap() << (6 * (3 - i)))
-        //     .sum();
-        let mut i3 = 0usize;
-        for (i, v) in lst.iter().enumerate() {
-            i3 |= Self::decode_char(*v, i)? << (6 * (3 - i));
-        }
-
-        Ok(vec![
-            (i3 >> 16) as u8 & 0xff,
-            (i3 >> 8) as u8 & 0xff,
-            i3 as u8 & 0xff,
-        ])
-        // Ok([
-        //     (i3 >> 16) & 0xff, (i3 >> 8) & 0xff, i3 & 0xff
-        //     // (i3 & (0b11111111 << 16)) >> 16,
-        //     // (i3 & (0b11111111 << 8)) >> 8,
-        //     // i3 & 0b11111111,
-        // ]
-        // .into_iter()
-        // .map(|x| x as u8)
-        // .collect::<Vec<u8>>())
+        res[0] &= (i3 >> 16) as u8;
+        res[1] &= (i3 >> 8) as u8;
+        res[2] &= i3 as u8;
+        Ok(())
     }
 
     #[inline]
@@ -110,8 +85,8 @@ impl Base64 {
             b'A'..=b'Z' => v - b'A',
             b'a'..=b'z' => v - b'a' + 26,
             b'0'..=b'9' => v - b'0' + 52,
-	    b'+' => 62,
-	    b'/' => 63,
+            b'+' => 62,
+            b'/' => 63,
             b'=' => 0, // actually only tailing `=`s are allowed
             _ => return Err(DecodeBase64Error::InvalidChar { c: v as char, idx }),
         }) as usize)
@@ -130,8 +105,25 @@ mod test {
             conv::bytes_to_string(&Base64::encode(b"hello world"))
         );
         assert_eq!(
+            "aGVsbG8gd29ybGQh",
+            conv::bytes_to_string(&Base64::encode(b"hello world!"))
+        );
+        assert_eq!(
+            "aGVsbG8gd29ybGQhIQ==",
+            conv::bytes_to_string(&Base64::encode(b"hello world!!"))
+        );
+
+        assert_eq!(
             "hello world",
             conv::bytes_to_string(&Base64::decode(b"aGVsbG8gd29ybGQ=").unwrap())
+        );
+        assert_eq!(
+            "hello world!",
+            conv::bytes_to_string(&Base64::decode(b"aGVsbG8gd29ybGQh").unwrap())
+        );
+        assert_eq!(
+            "hello world!!",
+            conv::bytes_to_string(&Base64::decode(b"aGVsbG8gd29ybGQhIQ==").unwrap())
         );
     }
 }

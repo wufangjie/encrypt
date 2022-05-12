@@ -1,8 +1,8 @@
 extern crate encrypt;
+use base64 as base64c;
 use criterion::{criterion_group, criterion_main, Criterion};
 use encrypt::base64::Base64;
 use encrypt::conv;
-use base64 as base64c;
 // use num_bigint::{BigInt, Sign};
 // use num_traits::{One, Zero};
 use std::fs;
@@ -41,7 +41,6 @@ fn test_crate() {
 //     assert_eq!(m, conv::bytes_to_string(&d.unwrap()));
 // }
 
-
 pub fn criterion_benchmark_mine(c: &mut Criterion) {
     c.bench_function("mine", |b| b.iter(test_mine));
 }
@@ -49,7 +48,6 @@ pub fn criterion_benchmark_mine(c: &mut Criterion) {
 pub fn criterion_benchmark_crate(c: &mut Criterion) {
     c.bench_function("crate", |b| b.iter(test_crate));
 }
-
 
 // pub fn criterion_benchmark_mine_crate(c: &mut Criterion) {
 //     c.bench_function("mine + crate", |b| b.iter(test_mine_crate));
@@ -65,6 +63,5 @@ criterion_group!(
     criterion_benchmark_crate,
     // criterion_benchmark_mine_crate,
     // criterion_benchmark_crate_mine,
-
 );
 criterion_main!(benches);
