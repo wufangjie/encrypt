@@ -275,7 +275,7 @@ pub fn encode(msg: &[u8]) -> Vec<u8> {
     let mut msg_i = 0;
     let mut res_i = 0;
     for _ in 0..n_block {
-	// NOTE: [lo..hi] 这种形式可以减少 bound check, 提高速度
+        // NOTE: [lo..hi] 这种形式可以减少 bound check, 提高速度
         encode_3bytes(&msg[msg_i..msg_i + 3], &mut res[res_i..res_i + 4]);
         msg_i += 3;
         res_i += 4;
