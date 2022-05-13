@@ -77,8 +77,8 @@ fn openssl_aes_ige() {
     assert_eq!(decrypted, blocks);
 }
 
-pub fn criterion_benchmark_mine(c: &mut Criterion) {
-    c.bench_function("mine", |b| b.iter(my_aes_ige));
+pub fn criterion_benchmark_my_aes(c: &mut Criterion) {
+    c.bench_function("my aes", |b| b.iter(my_aes_ige));
 }
 
 pub fn criterion_benchmark_openssl(c: &mut Criterion) {
@@ -87,7 +87,7 @@ pub fn criterion_benchmark_openssl(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-    criterion_benchmark_mine,
+    criterion_benchmark_my_aes,
     criterion_benchmark_openssl,
 );
 criterion_main!(benches);
