@@ -75,7 +75,9 @@ impl ByteSquare {
     /// 密钥加法 (异或操作, 加密解密同)
     fn add_bytes(&mut self, other: &[u8]) {
         // for i in 0..N2 {
-        //     self.data[i] ^= other[i];
+        //     unsafe {
+        //         self.data[i] ^= other.get_unchecked(i);
+        //     }
         // }
         for (data_i, other_i) in self.data.iter_mut().zip(other.iter()) {
             *data_i ^= *other_i;
@@ -164,6 +166,9 @@ impl ByteSquare {
         // }
         // let mut v = [0usize; N];
         for p in self.data.chunks_mut(N) {
+            // for (i, vi) in v.iter_mut().enumerate() {
+            //     *vi = LOG_TABLE[p[i] as usize];
+            // }
             v[0] = LOG_TABLE[p[0] as usize];
             v[1] = LOG_TABLE[p[1] as usize];
             v[2] = LOG_TABLE[p[2] as usize];
@@ -187,6 +192,12 @@ impl ByteSquare {
         // }
         //let mut v = [0usize; N];
         for p in self.data.chunks_mut(N) {
+            // for (i, vi) in v.iter_mut().enumerate() {
+            //     *vi = LOG_TABLE[p[i] as usize];
+            // }
+            // for (i, pi) in p.iter_mut().enumerate() {
+            // 	*pi = mat_mul_2(&MIX_MAT_LOG_INV[i], v);
+            // }
             v[0] = LOG_TABLE[p[0] as usize];
             v[1] = LOG_TABLE[p[1] as usize];
             v[2] = LOG_TABLE[p[2] as usize];
@@ -269,6 +280,11 @@ fn mat_mul(row: &[u8], col: &[u8]) -> u8 {
 #[inline]
 fn mat_mul_2(row: &[usize], col: &[usize]) -> u8 {
     // row[0] will not equal to 0
+    // row.iter()
+    //     .zip(col.iter())
+    //     .map(|(r, c)| if *c == 0 { 0 } else { EXP_TABLE[r + c] })
+    //     .reduce(|x, y| x ^ y)
+    //     .unwrap()
     (if col[0] == 0 {
         0
     } else {
@@ -358,7 +374,7 @@ impl AES {
     pub fn encode_ecb(&self, msg: &[u8]) -> Vec<u8> {
         // ECB 可以并行计算, CBC 每个 block 开始加密前要先和之前的加密结果 XOR
         let mut res = Vec::with_capacity(msg.len());
-        let mut cache = [0; N2];
+        let mut cache = [0; N];
         let mut block = ByteSquare::new();
         for m in msg.chunks(N2) {
             block.copy_from_col(m);
@@ -370,7 +386,7 @@ impl AES {
 
     pub fn decode_ecb(&self, msg: &[u8]) -> Vec<u8> {
         let mut res = Vec::with_capacity(msg.len());
-        let mut cache = [0; N2];
+        let mut cache = [0; N];
         let mut block = ByteSquare::new();
         for m in msg.chunks(N2) {
             block.copy_from_col(m);
@@ -383,7 +399,7 @@ impl AES {
     pub fn encode_cbc(&self, msg: &[u8], mut iv: ByteSquare) -> Vec<u8> {
         // iv means init vector
         let mut res = Vec::with_capacity(msg.len());
-        let mut cache = [0; N2];
+        let mut cache = [0; N];
         for m in msg.chunks(N2) {
             iv.add_bytes(m);
             self.encode_block(&mut iv, &mut cache);
@@ -395,7 +411,7 @@ impl AES {
     pub fn decode_cbc(&self, msg: &[u8], iv: ByteSquare) -> Vec<u8> {
         let mut res = Vec::with_capacity(msg.len());
         let mut iv_ref = &iv.data[..];
-        let mut cache = [0; N2];
+        let mut cache = [0; N];
         let mut block = ByteSquare::new();
         for m in msg.chunks(N2) {
             block.copy_from_col(m);
@@ -411,7 +427,7 @@ impl AES {
     pub fn encode_ige(&self, msg: &[u8], mut y_prev: ByteSquare, x_prev: ByteSquare) -> Vec<u8> {
         let mut res = Vec::with_capacity(msg.len());
         let mut x_prev_ref = &x_prev.data[..];
-        let mut cache = [0; N2];
+        let mut cache = [0; N];
         for m in msg.chunks(N2) {
             y_prev.add_bytes(m);
             self.encode_block(&mut y_prev, &mut cache);
@@ -427,7 +443,7 @@ impl AES {
         // NOTE: 把 y_prev 和 x_prev 换一下, 就和 encode_ige 完全一样
         let mut res = Vec::with_capacity(msg.len());
         let mut y_prev_ref = &y_prev.data[..];
-        let mut cache = [0; N2];
+        let mut cache = [0; N];
         for m in msg.chunks(N2) {
             x_prev.add_bytes(m);
             self.decode_block(&mut x_prev, &mut cache);
