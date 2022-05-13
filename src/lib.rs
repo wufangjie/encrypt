@@ -11,3 +11,4 @@ pub mod conv;
 pub mod error;
 
 pub mod base64;
+mod base64_const;

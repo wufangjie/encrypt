@@ -71,7 +71,7 @@ pub fn criterion_benchmark_openssl_base64(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-    // criterion_benchmark_my_base64,
+    criterion_benchmark_my_base64,
     criterion_benchmark_base64,
     criterion_benchmark_openssl_base64,
     // criterion_benchmark_mine_crate,
