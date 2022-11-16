@@ -19,9 +19,9 @@ openssl = "0.10"
 base64 = "0.13.0"
 
 [[bench]]
-#name = "aes_ige_benchmark"
+name = "aes_ige_benchmark"
 #name = "bigint_benchmark"
-name = "base64_benchmark"
+#name = "base64_benchmark"
 harness = false
 
 # [profile.release]

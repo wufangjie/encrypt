@@ -17,6 +17,7 @@ pub struct ByteSquare {
 }
 
 impl ByteSquare {
+    #[inline]
     pub fn new() -> Self {
         Self { data: [0; N2] }
     }
@@ -31,15 +32,20 @@ impl ByteSquare {
         Self { data }
     }
 
+    #[inline]
     pub fn from_col(col: &[u8]) -> Self {
-        let data = col.try_into().unwrap();
-        Self { data }
+        //let data = ;
+        Self {
+            data: col.try_into().unwrap(),
+        }
     }
 
+    #[inline]
     pub fn to_bytes(self) -> [u8; N2] {
         self.data
     }
 
+    #[inline]
     pub fn copy_from_col(&mut self, col: &[u8]) {
         self.data.copy_from_slice(col)
     }
@@ -155,7 +161,7 @@ impl ByteSquare {
     }
 
     /// 列混淆
-    fn mix_cols(&mut self, v: &mut [usize]) {
+    fn mix_cols(&mut self, v: &mut [usize; N]) {
         // let mut v = [0u8; N];
         // for p in self.data.chunks_mut(N) {
         //     v[0] = mat_mul(&MIX_MAT[0], &p);
@@ -181,7 +187,7 @@ impl ByteSquare {
     }
 
     /// 列混淆 (解密)
-    fn mix_cols_inv(&mut self, v: &mut [usize]) {
+    fn mix_cols_inv(&mut self, v: &mut [usize; N]) {
         // let mut v = [0u8; N];
         // for p in self.data.chunks_mut(N) {
         //     v[0] = mat_mul(&MIX_MAT_INV[0], &p);
@@ -256,52 +262,58 @@ impl Default for ByteSquare {
 //     res
 // }
 
-/// table lookup version of GF(2^8) multiplication
-#[inline]
-fn log_sum_exp(lhs: u8, rhs: u8) -> u8 {
-    if lhs == 0 || rhs == 0 {
-        0
-    } else {
-        // loop size: 0xff
-        //EXP_TABLE[(LOG_TABLE[lhs as usize] + LOG_TABLE[rhs as usize]) % 0xff]
-        EXP_TABLE[LOG_TABLE[lhs as usize] + LOG_TABLE[rhs as usize]]
-    }
-}
+// /// table lookup version of GF(2^8) multiplication
+// #[inline]
+// fn log_sum_exp(lhs: u8, rhs: u8) -> u8 {
+//     if lhs == 0 || rhs == 0 {
+//         0
+//     } else {
+//         // loop size: 0xff
+//         //EXP_TABLE[(LOG_TABLE[lhs as usize] + LOG_TABLE[rhs as usize]) % 0xff]
+//         EXP_TABLE[LOG_TABLE[lhs as usize] + LOG_TABLE[rhs as usize]]
+//     }
+// }
 
-/// table lookup version of GF(2^8) multiplication
-#[inline]
-fn mat_mul(row: &[u8], col: &[u8]) -> u8 {
-    log_sum_exp(row[0], col[0])
-        ^ log_sum_exp(row[1], col[1])
-        ^ log_sum_exp(row[2], col[2])
-        ^ log_sum_exp(row[3], col[3])
-}
+// /// table lookup version of GF(2^8) multiplication
+// #[inline]
+// fn mat_mul(row: &[u8], col: &[u8]) -> u8 {
+//     log_sum_exp(row[0], col[0])
+//         ^ log_sum_exp(row[1], col[1])
+//         ^ log_sum_exp(row[2], col[2])
+//         ^ log_sum_exp(row[3], col[3])
+// }
 
-#[inline]
-fn mat_mul_2(row: &[usize], col: &[usize]) -> u8 {
+#[inline(always)]
+fn mat_mul_2(row: &[usize; N], col: &[usize; N]) -> u8 {
     // row[0] will not equal to 0
     // row.iter()
     //     .zip(col.iter())
     //     .map(|(r, c)| if *c == 0 { 0 } else { EXP_TABLE[r + c] })
     //     .reduce(|x, y| x ^ y)
     //     .unwrap()
-    (if col[0] == 0 {
-        0
-    } else {
-        EXP_TABLE[row[0] + col[0]]
-    } ^ if col[1] == 0 {
-        0
-    } else {
-        EXP_TABLE[row[1] + col[1]]
-    } ^ if col[2] == 0 {
-        0
-    } else {
-        EXP_TABLE[row[2] + col[2]]
-    } ^ if col[3] == 0 {
-        0
-    } else {
-        EXP_TABLE[row[3] + col[3]]
-    })
+
+    EXP_TABLE[row[0] + col[0]]
+        ^ EXP_TABLE[row[1] + col[1]]
+        ^ EXP_TABLE[row[2] + col[2]]
+        ^ EXP_TABLE[row[3] + col[3]]
+
+    // (if col[0] == 0 {
+    //     0
+    // } else {
+    //     EXP_TABLE[row[0] + col[0]]
+    // } ^ if col[1] == 0 {
+    //     0
+    // } else {
+    //     EXP_TABLE[row[1] + col[1]]
+    // } ^ if col[2] == 0 {
+    //     0
+    // } else {
+    //     EXP_TABLE[row[2] + col[2]]
+    // } ^ if col[3] == 0 {
+    //     0
+    // } else {
+    //     EXP_TABLE[row[3] + col[3]]
+    // })
 }
 
 #[derive(Debug)]
@@ -324,7 +336,9 @@ impl AES {
             _ => panic!("AES only support 128/192/256 bits key!"),
         };
 
-        let mut key_manager = vec![];
+        let nrow = N * (round + 1);
+
+        let mut key_manager = Vec::with_capacity(nrow);
         for row in key.chunks(N) {
             let mut new = [0; N];
             for (i, new_i) in new.iter_mut().enumerate() {
@@ -335,7 +349,6 @@ impl AES {
 
         let mut i = key_len;
         let mut r = 0;
-        let nrow = N * (round + 1);
 
         while i < nrow {
             let mut new = key_manager[i - 1];
@@ -455,7 +468,7 @@ impl AES {
     }
 
     #[inline(always)]
-    fn encode_block(&self, msg: &mut ByteSquare, cache: &mut [usize]) {
+    fn encode_block(&self, msg: &mut ByteSquare, cache: &mut [usize; N]) {
         msg.add_bytes(&self.keys[0]);
         for i in 1..self.round {
             msg.sub();
@@ -468,8 +481,8 @@ impl AES {
         msg.add_bytes(&self.keys[self.round]);
     }
 
-    #[inline(always)]
-    fn decode_block(&self, msg: &mut ByteSquare, cache: &mut [usize]) {
+    //#[inline]
+    fn decode_block(&self, msg: &mut ByteSquare, cache: &mut [usize; N]) {
         msg.add_bytes(&self.keys[self.round]);
         msg.shift_rows_inv();
         msg.sub_inv();
